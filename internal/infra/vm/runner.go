@@ -86,6 +86,13 @@ func (r *PropolisRunner) Start(ctx context.Context, cfg VMConfig) (VM, error) {
 		"memory", cfg.Memory,
 	)
 
+	// Each VM gets its own data directory so multiple VMs can run in parallel
+	// without conflicting on state files or logs.
+	dataDir, err := vmDataDir(cfg.Name)
+	if err != nil {
+		return nil, fmt.Errorf("resolving VM data directory: %w", err)
+	}
+
 	// Generate ephemeral SSH key pair in a temp dir.
 	keyDir, err := os.MkdirTemp("", "sandbox-ssh-*")
 	if err != nil {
@@ -111,6 +118,7 @@ func (r *PropolisRunner) Start(ctx context.Context, cfg VMConfig) (VM, error) {
 	// Build propolis options.
 	opts := []propolis.Option{
 		propolis.WithName(cfg.Name),
+		propolis.WithDataDir(dataDir),
 		propolis.WithCPUs(cfg.CPUs),
 		propolis.WithMemory(cfg.Memory),
 		propolis.WithPorts(propolis.PortForward{Host: sshPort, Guest: 22}),
@@ -208,4 +216,14 @@ func (v *propolisVM) DataDir() string {
 
 func (v *propolisVM) SSHKeyPath() string {
 	return v.sshKeyPath
+}
+
+// vmDataDir returns a per-VM data directory under ~/.config/sandbox-agent/<name>.
+// This isolates state files, logs, and locks so multiple VMs can run in parallel.
+func vmDataDir(name string) (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("determining home directory: %w", err)
+	}
+	return filepath.Join(home, ".config", "sandbox-agent", "vms", name), nil
 }
