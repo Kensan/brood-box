@@ -197,9 +197,11 @@ func (s *InteractiveSession) handleResize(ctx context.Context, stdin *os.File, s
 }
 
 // buildCommand constructs the shell command to run in the VM.
-// Sources the env file, changes to the workspace, and executes the command.
+// Sources the system profile (for PATH), the env file, changes to the
+// workspace, and executes the command.
 func buildCommand(command []string) string {
 	var parts []string
+	parts = append(parts, "source /etc/profile 2>/dev/null || true")
 	parts = append(parts, "source /etc/sandbox-env 2>/dev/null || true")
 	parts = append(parts, "cd /workspace")
 	parts = append(parts, "exec "+strings.Join(command, " "))

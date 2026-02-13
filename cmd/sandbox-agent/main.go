@@ -173,6 +173,9 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 		CfgLoader:   cfgLoader,
 		EnvProvider: agent.NewOSEnvProvider(os.Environ),
 		Logger:      logger,
+		Stdin:       os.Stdin,
+		Stdout:      os.Stdout,
+		Stderr:      os.Stderr,
 	})
 
 	err = runner.Run(ctx, agentName, app.RunOpts{

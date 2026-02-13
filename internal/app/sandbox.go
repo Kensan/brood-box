@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 
 	"github.com/stacklok/sandbox-agent/internal/domain/agent"
 	"github.com/stacklok/sandbox-agent/internal/domain/config"
@@ -43,6 +44,14 @@ type SandboxDeps struct {
 	CfgLoader   *infraconfig.Loader
 	EnvProvider agent.EnvProvider
 	Logger      *slog.Logger
+
+	// Stdin, Stdout, Stderr are the terminal file descriptors for the
+	// interactive SSH session. These must be real *os.File values (not
+	// arbitrary io.Reader/Writer) because the PTY layer needs file
+	// descriptors for term.MakeRaw and term.IsTerminal.
+	Stdin  *os.File
+	Stdout *os.File
+	Stderr *os.File
 }
 
 // SandboxRunner orchestrates the full sandbox VM lifecycle:
@@ -54,6 +63,9 @@ type SandboxRunner struct {
 	cfgLoader   *infraconfig.Loader
 	envProvider agent.EnvProvider
 	logger      *slog.Logger
+	stdin       *os.File
+	stdout      *os.File
+	stderr      *os.File
 }
 
 // NewSandboxRunner creates a new SandboxRunner with the given dependencies.
@@ -65,6 +77,9 @@ func NewSandboxRunner(deps SandboxDeps) *SandboxRunner {
 		cfgLoader:   deps.CfgLoader,
 		envProvider: deps.EnvProvider,
 		logger:      deps.Logger,
+		stdin:       deps.Stdin,
+		stdout:      deps.Stdout,
+		stderr:      deps.Stderr,
 	}
 }
 
@@ -150,6 +165,9 @@ func (s *SandboxRunner) Run(ctx context.Context, agentName string, opts RunOpts)
 		User:    "sandbox",
 		KeyPath: sandboxVM.SSHKeyPath(),
 		Command: ag.Command,
+		Stdin:   s.stdin,
+		Stdout:  s.stdout,
+		Stderr:  s.stderr,
 	}
 
 	s.logger.Info("connecting to sandbox VM",
