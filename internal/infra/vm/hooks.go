@@ -27,10 +27,9 @@ ip link set eth0 up
 ip addr add 192.168.127.2/24 dev eth0
 ip route add default via 192.168.127.1
 echo "nameserver 192.168.127.1" > /etc/resolv.conf
-# SSH
+# SSH (dropbear — no /var/empty ownership requirement)
 mkdir -p /root/.ssh && chmod 700 /root/.ssh
-mkdir -p /run/sshd
-/usr/sbin/sshd -D &
+dropbear -F -E -R -p 22 &
 # Workspace
 mkdir -p /workspace
 mount -t virtiofs workspace /workspace 2>/dev/null || true
