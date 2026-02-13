@@ -25,6 +25,8 @@ import (
 
 func main() {
 	if err := rootCmd().Execute(); err != nil {
+		// Cobra won't print the error (SilenceErrors: true), so we do.
+		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
 		os.Exit(1)
 	}
 }
@@ -109,9 +111,17 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 	ctx, cancel := signal.NotifyContext(parentCtx, syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
+	var logLevel slog.LevelVar
+	logLevel.Set(slog.LevelInfo)
+	if lvl := os.Getenv("SLOG_LEVEL"); lvl != "" {
+		if err := logLevel.UnmarshalText([]byte(lvl)); err != nil {
+			return fmt.Errorf("invalid SLOG_LEVEL %q: %w", lvl, err)
+		}
+	}
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
+		Level: &logLevel,
 	}))
+	slog.SetDefault(logger)
 
 	// Resolve workspace.
 	workspace := flags.workspace
@@ -168,18 +178,17 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 	})
 
 	if err != nil {
-		// Check if it's an ExitError and propagate the exit code.
+		// Propagate the agent's exit code without printing an error.
 		if exitErr, ok := err.(*infrassh.ExitError); ok {
 			os.Exit(exitErr.Code)
 		}
-		// Print agent not found with available agents.
+		// Print available agents on not-found errors.
 		var notFound *agent.ErrNotFound
 		if isErrNotFound(err, &notFound) {
-			fmt.Fprintf(os.Stderr, "Error: %s\n\nAvailable agents:\n", err)
+			fmt.Fprintf(os.Stderr, "\nAvailable agents:\n")
 			for _, a := range registry.List() {
 				fmt.Fprintf(os.Stderr, "  %-15s %s\n", a.Name, a.Image)
 			}
-			return err
 		}
 		return err
 	}
