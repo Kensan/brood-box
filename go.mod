@@ -5,11 +5,9 @@ module github.com/stacklok/sandbox-agent
 
 go 1.25.7
 
-replace github.com/stacklok/propolis => ../propolis
-
 require (
 	github.com/spf13/cobra v1.10.2
-	github.com/stacklok/propolis v0.0.0-00010101000000-000000000000
+	github.com/stacklok/propolis v0.1.0
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/crypto v0.48.0
 	golang.org/x/term v0.40.0
