@@ -85,6 +85,7 @@ func (r *PropolisRunner) Start(ctx context.Context, cfg VMConfig) (VM, error) {
 		"image", cfg.Image,
 		"cpus", cfg.CPUs,
 		"memory", cfg.Memory,
+		"workspace", cfg.WorkspacePath,
 	)
 
 	// Each VM gets its own data directory so multiple VMs can run in parallel

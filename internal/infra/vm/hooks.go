@@ -32,7 +32,20 @@ mkdir -p /home/sandbox/.ssh && chmod 700 /home/sandbox/.ssh && chown sandbox:san
 dropbear -F -E -R -p 22 &
 # Workspace
 mkdir -p /workspace
-mount -t virtiofs workspace /workspace 2>/dev/null || true
+mounted=false
+for i in 1 2 3 4 5; do
+  if mount -t virtiofs workspace /workspace 2>/tmp/mount-err; then
+    mounted=true
+    break
+  fi
+  sleep 0.5
+done
+if [ "$mounted" = "true" ]; then
+  chown sandbox:sandbox /workspace
+else
+  echo "WARNING: virtiofs workspace mount failed after 5 attempts:" >&2
+  cat /tmp/mount-err >&2
+fi
 wait
 `
 

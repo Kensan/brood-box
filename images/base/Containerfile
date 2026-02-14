@@ -11,6 +11,7 @@ RUN apk add --no-cache \
     git \
     ca-certificates-bundle \
     iproute2 \
+    mount \
     coreutils \
     findutils \
     grep \
