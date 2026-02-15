@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"time"
 
 	"github.com/stacklok/sandbox-agent/internal/domain/agent"
 	"github.com/stacklok/sandbox-agent/internal/domain/config"
@@ -150,10 +151,13 @@ func (s *SandboxRunner) Run(ctx context.Context, agentName string, opts RunOpts)
 		return fmt.Errorf("starting sandbox VM: %w", err)
 	}
 
-	// 5. Ensure VM is stopped on exit.
+	// 5. Ensure VM is stopped on exit. Use a fresh context because the
+	// parent ctx may already be cancelled (e.g. SIGINT triggered shutdown).
 	defer func() {
 		s.logger.Info("shutting down sandbox VM")
-		if stopErr := sandboxVM.Stop(ctx); stopErr != nil {
+		stopCtx, stopCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer stopCancel()
+		if stopErr := sandboxVM.Stop(stopCtx); stopErr != nil {
 			s.logger.Error("failed to stop VM", "error", stopErr)
 		}
 	}()
