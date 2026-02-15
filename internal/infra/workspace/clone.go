@@ -20,7 +20,8 @@ type FileCloner interface {
 	CloneFile(src, dst string) error
 }
 
-// copyFile performs a regular file copy from src to dst, preserving mode bits.
+// copyFile performs a regular file copy from src to dst, preserving permission
+// bits. Setuid/setgid/sticky bits are stripped for security.
 func copyFile(src, dst string) error {
 	sf, err := os.Open(src)
 	if err != nil {
@@ -33,17 +34,21 @@ func copyFile(src, dst string) error {
 		return fmt.Errorf("stat source: %w", err)
 	}
 
-	df, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, info.Mode())
+	// Strip setuid/setgid/sticky — only preserve rwx permissions.
+	mode := info.Mode().Perm()
+
+	df, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
 	if err != nil {
 		return fmt.Errorf("creating destination: %w", err)
 	}
-	defer func() { _ = df.Close() }()
 
 	if _, err := io.Copy(df, sf); err != nil {
+		_ = df.Close()
 		return fmt.Errorf("copying data: %w", err)
 	}
 
-	return nil
+	// Explicitly close and return any error (e.g., NFS write-back failure).
+	return df.Close()
 }
 
 // ValidateInBounds verifies that targetPath (after resolution) is within
@@ -55,6 +60,13 @@ func ValidateInBounds(basePath, targetPath string) error {
 		return fmt.Errorf("resolving base path: %w", err)
 	}
 
+	// Resolve symlinks in the base path itself so the comparison is
+	// against the real filesystem location (prevents base-path symlink attacks).
+	resolvedBase, err := resolveExistingPrefix(absBase)
+	if err != nil {
+		return fmt.Errorf("resolving symlinks in base: %w", err)
+	}
+
 	absTarget, err := filepath.Abs(targetPath)
 	if err != nil {
 		return fmt.Errorf("resolving target path: %w", err)
@@ -63,15 +75,15 @@ func ValidateInBounds(basePath, targetPath string) error {
 	// Resolve symlinks in the target to catch symlink-based traversal.
 	// If the target doesn't exist yet (e.g., new file being flushed),
 	// resolve the longest existing prefix.
-	resolved, err := resolveExistingPrefix(absTarget)
+	resolvedTarget, err := resolveExistingPrefix(absTarget)
 	if err != nil {
 		return fmt.Errorf("resolving symlinks in target: %w", err)
 	}
 
 	// Ensure base ends with separator for prefix check.
-	basePrefix := absBase + string(filepath.Separator)
-	if resolved != absBase && !strings.HasPrefix(resolved, basePrefix) {
-		return fmt.Errorf("path %q (resolved: %q) escapes base directory %q", absTarget, resolved, absBase)
+	basePrefix := resolvedBase + string(filepath.Separator)
+	if resolvedTarget != resolvedBase && !strings.HasPrefix(resolvedTarget, basePrefix) {
+		return fmt.Errorf("path %q (resolved: %q) escapes base directory %q", absTarget, resolvedTarget, resolvedBase)
 	}
 
 	return nil

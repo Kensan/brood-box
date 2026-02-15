@@ -5,6 +5,7 @@ package workspace
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -241,10 +242,16 @@ func TestCleanupStaleSnapshots(t *testing.T) {
 	workspaceDir := filepath.Join(parentDir, "my-project")
 	require.NoError(t, os.MkdirAll(workspaceDir, 0o755))
 
-	// Create a stale snapshot dir WITH sentinel file.
+	// Create a stale snapshot dir with sentinel containing a dead PID.
 	staleDir := filepath.Join(parentDir, ".sandbox-snapshot-abc123")
 	require.NoError(t, os.MkdirAll(staleDir, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(staleDir, ".sandbox-snapshot-sentinel"), []byte("active"), 0o600))
+	// PID 2147483647 is almost certainly not running.
+	require.NoError(t, os.WriteFile(filepath.Join(staleDir, ".sandbox-snapshot-sentinel"), []byte("2147483647"), 0o600))
+
+	// Create a snapshot dir with sentinel containing OUR PID (should not be removed).
+	liveDir := filepath.Join(parentDir, ".sandbox-snapshot-live")
+	require.NoError(t, os.MkdirAll(liveDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(liveDir, ".sandbox-snapshot-sentinel"), []byte(fmt.Sprintf("%d", os.Getpid())), 0o600))
 
 	// Create a snapshot-prefixed dir WITHOUT sentinel (should not be removed).
 	noSentinelDir := filepath.Join(parentDir, ".sandbox-snapshot-no-sentinel")
@@ -258,7 +265,10 @@ func TestCleanupStaleSnapshots(t *testing.T) {
 	CleanupStaleSnapshots(workspaceDir, logger)
 
 	_, err := os.Stat(staleDir)
-	assert.True(t, os.IsNotExist(err), "stale snapshot with sentinel should be removed")
+	assert.True(t, os.IsNotExist(err), "stale snapshot with dead PID should be removed")
+
+	_, err = os.Stat(liveDir)
+	assert.NoError(t, err, "snapshot with live PID should remain")
 
 	_, err = os.Stat(noSentinelDir)
 	assert.NoError(t, err, "snapshot dir without sentinel should remain")

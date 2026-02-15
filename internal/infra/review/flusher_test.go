@@ -157,3 +157,81 @@ func TestFSFlusher_PreservesPermissions(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, os.FileMode(0o755), info.Mode().Perm())
 }
+
+func TestFSFlusher_StripsSetuidBits(t *testing.T) {
+	t.Parallel()
+
+	origDir := t.TempDir()
+	snapDir := t.TempDir()
+
+	// Create file with setuid+setgid bits.
+	snapFile := filepath.Join(snapDir, "suid.sh")
+	require.NoError(t, os.WriteFile(snapFile, []byte("#!/bin/sh"), 0o755))
+	require.NoError(t, os.Chmod(snapFile, 0o6755)) // setuid + setgid + 0755
+
+	hash, err := diff.HashFile(snapFile)
+	require.NoError(t, err)
+
+	flusher := NewFSFlusher()
+	err = flusher.Flush(origDir, snapDir, []snapshot.FileChange{
+		{RelPath: "suid.sh", Kind: snapshot.Added, Hash: hash},
+	})
+	require.NoError(t, err)
+
+	info, err := os.Stat(filepath.Join(origDir, "suid.sh"))
+	require.NoError(t, err)
+	// setuid/setgid should be stripped — only rwx preserved.
+	assert.Equal(t, os.FileMode(0o755), info.Mode().Perm())
+	assert.Zero(t, info.Mode()&os.ModeSetuid, "setuid bit should be stripped")
+	assert.Zero(t, info.Mode()&os.ModeSetgid, "setgid bit should be stripped")
+}
+
+func TestFSFlusher_DeletedFile_HashMismatchRejected(t *testing.T) {
+	t.Parallel()
+
+	origDir := t.TempDir()
+	snapDir := t.TempDir()
+
+	origFile := filepath.Join(origDir, "file.go")
+	require.NoError(t, os.WriteFile(origFile, []byte("original"), 0o644))
+
+	// Record a hash from the original content.
+	origHash, err := diff.HashFile(origFile)
+	require.NoError(t, err)
+
+	// Modify the file in the original workspace (simulates concurrent edit).
+	require.NoError(t, os.WriteFile(origFile, []byte("modified by user"), 0o644))
+
+	flusher := NewFSFlusher()
+	err = flusher.Flush(origDir, snapDir, []snapshot.FileChange{
+		{RelPath: "file.go", Kind: snapshot.Deleted, Hash: origHash},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "hash mismatch")
+
+	// File should NOT have been deleted.
+	_, err = os.Stat(origFile)
+	assert.NoError(t, err, "file should still exist after hash mismatch")
+}
+
+func TestFSFlusher_DeletedFile_WithHashVerification(t *testing.T) {
+	t.Parallel()
+
+	origDir := t.TempDir()
+	snapDir := t.TempDir()
+
+	origFile := filepath.Join(origDir, "file.go")
+	require.NoError(t, os.WriteFile(origFile, []byte("delete me"), 0o644))
+
+	hash, err := diff.HashFile(origFile)
+	require.NoError(t, err)
+
+	flusher := NewFSFlusher()
+	err = flusher.Flush(origDir, snapDir, []snapshot.FileChange{
+		{RelPath: "file.go", Kind: snapshot.Deleted, Hash: hash},
+	})
+	require.NoError(t, err)
+
+	_, err = os.Stat(origFile)
+	assert.True(t, os.IsNotExist(err), "file should be deleted")
+}

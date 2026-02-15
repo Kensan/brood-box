@@ -111,8 +111,15 @@ func (d *FSDiffer) Diff(originalDir, snapshotDir string, matcher exclude.Matcher
 	return changes, nil
 }
 
+// internalFiles contains filenames that are internal to the snapshot system
+// and should be excluded from diff results.
+var internalFiles = map[string]bool{
+	".sandbox-snapshot-sentinel": true,
+}
+
 // buildIndex walks a directory and builds a map of relPath -> fileEntry.
-// If matcher is non-nil, excluded paths are skipped.
+// If matcher is non-nil, excluded paths are skipped. Internal snapshot
+// metadata files are always skipped.
 func buildIndex(root string, matcher exclude.Matcher) (map[string]fileEntry, error) {
 	index := make(map[string]fileEntry)
 
@@ -138,6 +145,11 @@ func buildIndex(root string, matcher exclude.Matcher) (map[string]fileEntry, err
 
 		// Skip non-regular files (symlinks, etc.).
 		if !d.Type().IsRegular() {
+			return nil
+		}
+
+		// Skip internal snapshot metadata files.
+		if internalFiles[filepath.Base(relPath)] {
 			return nil
 		}
 

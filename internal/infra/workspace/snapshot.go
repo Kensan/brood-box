@@ -10,7 +10,9 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/stacklok/sandbox-agent/internal/infra/exclude"
 )
@@ -137,9 +139,12 @@ func (c *FSWorkspaceCloner) CreateSnapshot(ctx context.Context, workspacePath st
 		return nil, fmt.Errorf("walking workspace: %w", err)
 	}
 
-	// Write sentinel file to identify this as an active sandbox snapshot.
+	// Write sentinel file with our PID to identify this as an active snapshot.
+	// The PID allows stale cleanup to distinguish dead-process snapshots from
+	// a concurrently running instance's active snapshot.
 	sentinelPath := filepath.Join(tmpDir, snapshotSentinel)
-	if err := os.WriteFile(sentinelPath, []byte("active"), 0o600); err != nil {
+	sentinelContent := fmt.Sprintf("%d", os.Getpid())
+	if err := os.WriteFile(sentinelPath, []byte(sentinelContent), 0o600); err != nil {
 		return nil, fmt.Errorf("writing snapshot sentinel: %w", err)
 	}
 
@@ -206,11 +211,22 @@ func CleanupStaleSnapshots(workspacePath string, logger *slog.Logger) {
 		stalePath := filepath.Join(parentDir, entry.Name())
 
 		// Only remove directories that have our sentinel file to avoid
-		// deleting unrelated directories or a concurrent instance's snapshot.
-		sentinel := filepath.Join(stalePath, snapshotSentinel)
-		if _, err := os.Stat(sentinel); os.IsNotExist(err) {
+		// deleting unrelated directories.
+		sentinelPath := filepath.Join(stalePath, snapshotSentinel)
+		data, err := os.ReadFile(sentinelPath)
+		if err != nil {
 			logger.Debug("skipping directory without sentinel", "path", stalePath)
 			continue
+		}
+
+		// If the sentinel contains a PID, check if that process is still alive.
+		// Skip cleanup for snapshots owned by a running process.
+		if pid, err := strconv.Atoi(strings.TrimSpace(string(data))); err == nil && pid > 0 {
+			if isProcessAlive(pid) {
+				logger.Debug("skipping snapshot owned by running process",
+					"path", stalePath, "pid", pid)
+				continue
+			}
 		}
 
 		logger.Warn("removing stale snapshot directory", "path", stalePath)
@@ -218,4 +234,16 @@ func CleanupStaleSnapshots(workspacePath string, logger *slog.Logger) {
 			logger.Error("failed to remove stale snapshot", "path", stalePath, "error", err)
 		}
 	}
+}
+
+// isProcessAlive checks if a process with the given PID is still running.
+// Uses signal 0 which checks for process existence without sending a signal.
+func isProcessAlive(pid int) bool {
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+	// Signal 0 checks existence without actually sending a signal.
+	err = proc.Signal(syscall.Signal(0))
+	return err == nil
 }
