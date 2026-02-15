@@ -63,9 +63,12 @@ func (d *FSDiffer) Diff(originalDir, snapshotDir string, matcher exclude.Matcher
 	for relPath, origEntry := range origIndex {
 		snapEntry, exists := snapIndex[relPath]
 		if !exists {
+			// Store original hash so the flusher can verify the file
+			// hasn't been modified in the real workspace before deleting.
 			changes = append(changes, snapshot.FileChange{
 				RelPath: relPath,
 				Kind:    snapshot.Deleted,
+				Hash:    origEntry.hash,
 			})
 			continue
 		}
@@ -190,8 +193,17 @@ func isBinary(data []byte) bool {
 	return bytes.Contains(data[:limit], []byte{0})
 }
 
+// maxDiffFileSize is the maximum file size (10 MiB) for computing text diffs.
+// Files larger than this get a summary instead of a full diff to prevent OOM.
+const maxDiffFileSize = 10 * 1024 * 1024
+
 // computeDiff generates a unified diff between two files.
 func computeDiff(origPath, snapPath, relPath string) (string, error) {
+	// Check sizes before loading to prevent OOM on large files.
+	if tooLarge, msg := checkFileSize(origPath, snapPath, relPath); tooLarge {
+		return msg, nil
+	}
+
 	origData, err := os.ReadFile(origPath)
 	if err != nil {
 		return "", err
@@ -222,6 +234,14 @@ func computeDiff(origPath, snapPath, relPath string) (string, error) {
 
 // computeAddedDiff generates a diff showing a new file.
 func computeAddedDiff(snapPath, relPath string) (string, error) {
+	info, err := os.Stat(snapPath)
+	if err != nil {
+		return "", err
+	}
+	if info.Size() > maxDiffFileSize {
+		return fmt.Sprintf("File too large for diff (%d bytes)", info.Size()), nil
+	}
+
 	data, err := os.ReadFile(snapPath)
 	if err != nil {
 		return "", err
@@ -233,10 +253,30 @@ func computeAddedDiff(snapPath, relPath string) (string, error) {
 
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("--- /dev/null\n+++ b/%s\n", relPath))
-	lines := strings.Split(string(data), "\n")
+
+	content := string(data)
+	if len(content) > 0 && content[len(content)-1] == '\n' {
+		// File has trailing newline — split without producing empty trailing element.
+		content = content[:len(content)-1]
+	}
+	lines := strings.Split(content, "\n")
 	for _, line := range lines {
 		sb.WriteString("+" + line + "\n")
 	}
 
 	return sb.String(), nil
+}
+
+// checkFileSize returns true if either file exceeds maxDiffFileSize.
+func checkFileSize(origPath, snapPath, relPath string) (bool, string) {
+	for _, p := range []string{origPath, snapPath} {
+		info, err := os.Stat(p)
+		if err != nil {
+			continue
+		}
+		if info.Size() > maxDiffFileSize {
+			return true, fmt.Sprintf("File too large for diff (%d bytes)", info.Size())
+		}
+	}
+	return false, ""
 }

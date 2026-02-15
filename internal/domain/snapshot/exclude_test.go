@@ -43,15 +43,23 @@ func TestDefaultSecurityPatterns(t *testing.T) {
 		".env*",
 		"*.pem",
 		"*.key",
+		"*.jks",
+		"*.keystore",
 		".ssh/",
 		".aws/",
+		".gcloud/",
+		".config/gcloud/",
 		"credentials.json",
+		".yarnrc.yml",
 		".docker/config.json",
 		".git/config",
 		".pgpass",
 		".vault-token",
 		"*.tfvars",
+		".terraform/",
 		".config/gh/hosts.yml",
+		"age-key.txt",
+		"*.age",
 	}
 	for _, pat := range expected {
 		assert.Contains(t, patterns, pat, "missing security pattern: %s", pat)

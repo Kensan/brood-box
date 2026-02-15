@@ -38,14 +38,19 @@ func (f *FSFlusher) Flush(originalDir, snapshotDir string, accepted []snapshot.F
 	for _, ch := range accepted {
 		targetPath := filepath.Join(originalDir, ch.RelPath)
 
-		// Validate path stays within bounds.
+		// Validate target path stays within original workspace bounds.
 		if err := workspace.ValidateInBounds(originalDir, targetPath); err != nil {
-			return fmt.Errorf("path traversal rejected for %s: %w", ch.RelPath, err)
+			return fmt.Errorf("target path traversal rejected for %s: %w", ch.RelPath, err)
 		}
 
 		switch ch.Kind {
 		case snapshot.Added, snapshot.Modified:
 			snapPath := filepath.Join(snapshotDir, ch.RelPath)
+
+			// Validate source path stays within snapshot bounds.
+			if err := workspace.ValidateInBounds(snapshotDir, snapPath); err != nil {
+				return fmt.Errorf("snapshot path traversal rejected for %s: %w", ch.RelPath, err)
+			}
 
 			// Re-verify hash before copying.
 			currentHash, err := diff.HashFile(snapPath)
@@ -66,6 +71,17 @@ func (f *FSFlusher) Flush(originalDir, snapshotDir string, accepted []snapshot.F
 			}
 
 		case snapshot.Deleted:
+			// Re-verify original file hash before deleting to detect
+			// modifications in the real workspace since the diff.
+			if ch.Hash != "" {
+				currentHash, err := diff.HashFile(targetPath)
+				if err != nil && !os.IsNotExist(err) {
+					return fmt.Errorf("re-hashing original %s: %w", ch.RelPath, err)
+				}
+				if currentHash != "" && currentHash != ch.Hash {
+					return fmt.Errorf("hash mismatch for %s: original modified since diff, refusing to delete", ch.RelPath)
+				}
+			}
 			if err := os.Remove(targetPath); err != nil && !os.IsNotExist(err) {
 				return fmt.Errorf("deleting %s: %w", ch.RelPath, err)
 			}
@@ -76,6 +92,7 @@ func (f *FSFlusher) Flush(originalDir, snapshotDir string, accepted []snapshot.F
 }
 
 // copyFilePreserveMode copies src to dst preserving file permissions.
+// Setuid/setgid bits are stripped for security.
 func copyFilePreserveMode(src, dst string) error {
 	sf, err := os.Open(src)
 	if err != nil {
@@ -88,12 +105,19 @@ func copyFilePreserveMode(src, dst string) error {
 		return err
 	}
 
-	df, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, info.Mode())
+	// Strip setuid/setgid/sticky bits — only preserve rwx permissions.
+	mode := info.Mode().Perm()
+
+	df, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = df.Close() }()
 
-	_, err = io.Copy(df, sf)
-	return err
+	if _, err := io.Copy(df, sf); err != nil {
+		_ = df.Close()
+		return err
+	}
+
+	// Explicitly close and return any error (e.g., NFS write-back failure).
+	return df.Close()
 }

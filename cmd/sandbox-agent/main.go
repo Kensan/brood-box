@@ -6,6 +6,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -238,36 +239,20 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 
 	if err != nil {
 		// Propagate the agent's exit code without printing an error.
-		if exitErr, ok := err.(*infrassh.ExitError); ok {
+		var exitErr *infrassh.ExitError
+		if errors.As(err, &exitErr) {
 			os.Exit(exitErr.Code)
 		}
 		// Print available agents on not-found errors.
 		var notFound *agent.ErrNotFound
-		if isErrNotFound(err, &notFound) {
-			fmt.Fprintf(os.Stderr, "\nAvailable agents:\n")
+		if errors.As(err, &notFound) {
+			_, _ = fmt.Fprintf(os.Stderr, "\nAvailable agents:\n")
 			for _, a := range registry.List() {
-				fmt.Fprintf(os.Stderr, "  %-15s %s\n", a.Name, a.Image)
+				_, _ = fmt.Fprintf(os.Stderr, "  %-15s %s\n", a.Name, a.Image)
 			}
 		}
 		return err
 	}
 
 	return nil
-}
-
-// isErrNotFound checks if err wraps an agent.ErrNotFound and sets target.
-func isErrNotFound(err error, target **agent.ErrNotFound) bool {
-	for err != nil {
-		if e, ok := err.(*agent.ErrNotFound); ok {
-			*target = e
-			return true
-		}
-		// Unwrap if possible.
-		if unwrapper, ok := err.(interface{ Unwrap() error }); ok {
-			err = unwrapper.Unwrap()
-		} else {
-			break
-		}
-	}
-	return false
 }

@@ -18,6 +18,10 @@ import (
 // snapshotDirPrefix is the prefix for snapshot temporary directories.
 const snapshotDirPrefix = ".sandbox-snapshot-"
 
+// snapshotSentinel is a marker file placed inside snapshot directories
+// to identify them as sandbox snapshots (vs unrelated directories).
+const snapshotSentinel = ".sandbox-snapshot-sentinel"
+
 // Snapshot holds references to the original and snapshot workspace paths.
 type Snapshot struct {
 	// OriginalPath is the real workspace directory.
@@ -133,6 +137,12 @@ func (c *FSWorkspaceCloner) CreateSnapshot(ctx context.Context, workspacePath st
 		return nil, fmt.Errorf("walking workspace: %w", err)
 	}
 
+	// Write sentinel file to identify this as an active sandbox snapshot.
+	sentinelPath := filepath.Join(tmpDir, snapshotSentinel)
+	if err := os.WriteFile(sentinelPath, []byte("active"), 0o600); err != nil {
+		return nil, fmt.Errorf("writing snapshot sentinel: %w", err)
+	}
+
 	success = true
 	return &Snapshot{
 		OriginalPath: absWorkspace,
@@ -142,32 +152,36 @@ func (c *FSWorkspaceCloner) CreateSnapshot(ctx context.Context, workspacePath st
 
 // handleSymlink checks whether a symlink target is within the workspace and
 // copies it if so. Symlinks pointing outside the workspace are skipped.
+//
+// Security: reads the symlink target only once to prevent TOCTOU attacks
+// where the symlink is modified between check and use.
 func (c *FSWorkspaceCloner) handleSymlink(workspaceRoot, path, relPath, destPath string, matcher exclude.Matcher) error {
 	if matcher.Match(relPath) {
 		c.logger.Debug("excluding symlink from snapshot", "path", relPath)
 		return nil
 	}
 
-	// Resolve the symlink target.
-	resolved, err := filepath.EvalSymlinks(path)
-	if err != nil {
-		c.logger.Warn("skipping unresolvable symlink", "path", relPath, "error", err)
-		return nil
-	}
-
-	// Validate symlink target is within workspace boundary.
-	if err := ValidateInBounds(workspaceRoot, resolved); err != nil {
-		c.logger.Warn("skipping symlink pointing outside workspace",
-			"path", relPath,
-			"target", resolved,
-		)
-		return nil
-	}
-
-	// Read and recreate the symlink.
+	// Read the symlink target ONCE to avoid TOCTOU between check and use.
 	linkTarget, err := os.Readlink(path)
 	if err != nil {
-		return fmt.Errorf("reading symlink %s: %w", relPath, err)
+		c.logger.Warn("skipping unreadable symlink", "path", relPath, "error", err)
+		return nil
+	}
+
+	// Resolve the target to an absolute path for boundary validation.
+	absTarget := linkTarget
+	if !filepath.IsAbs(linkTarget) {
+		absTarget = filepath.Join(filepath.Dir(path), linkTarget)
+	}
+	absTarget = filepath.Clean(absTarget)
+
+	// Validate symlink target is within workspace boundary.
+	if err := ValidateInBounds(workspaceRoot, absTarget); err != nil {
+		c.logger.Warn("skipping symlink pointing outside workspace",
+			"path", relPath,
+			"target", absTarget,
+		)
+		return nil
 	}
 
 	return os.Symlink(linkTarget, destPath)
@@ -185,12 +199,23 @@ func CleanupStaleSnapshots(workspacePath string, logger *slog.Logger) {
 	}
 
 	for _, entry := range entries {
-		if entry.IsDir() && strings.HasPrefix(entry.Name(), snapshotDirPrefix) {
-			stalePath := filepath.Join(parentDir, entry.Name())
-			logger.Warn("removing stale snapshot directory", "path", stalePath)
-			if err := os.RemoveAll(stalePath); err != nil {
-				logger.Error("failed to remove stale snapshot", "path", stalePath, "error", err)
-			}
+		if !entry.IsDir() || !strings.HasPrefix(entry.Name(), snapshotDirPrefix) {
+			continue
+		}
+
+		stalePath := filepath.Join(parentDir, entry.Name())
+
+		// Only remove directories that have our sentinel file to avoid
+		// deleting unrelated directories or a concurrent instance's snapshot.
+		sentinel := filepath.Join(stalePath, snapshotSentinel)
+		if _, err := os.Stat(sentinel); os.IsNotExist(err) {
+			logger.Debug("skipping directory without sentinel", "path", stalePath)
+			continue
+		}
+
+		logger.Warn("removing stale snapshot directory", "path", stalePath)
+		if err := os.RemoveAll(stalePath); err != nil {
+			logger.Error("failed to remove stale snapshot", "path", stalePath, "error", err)
 		}
 	}
 }

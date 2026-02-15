@@ -26,8 +26,8 @@ func (c *darwinCloner) CloneFile(src, dst string) error {
 		return nil
 	}
 
-	// Fallback for non-APFS volumes or cross-device.
-	if errors.Is(err, unix.ENOTSUP) || errors.Is(err, unix.EXDEV) {
+	// Fallback for non-APFS volumes, cross-device, or destination exists.
+	if errors.Is(err, unix.ENOTSUP) || errors.Is(err, unix.EXDEV) || errors.Is(err, unix.EEXIST) {
 		return copyFile(src, dst)
 	}
 

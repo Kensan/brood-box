@@ -240,14 +240,19 @@ func (s *SandboxRunner) Run(ctx context.Context, agentName string, opts RunOpts)
 	}
 
 	// 8. Diff + review + flush (only when snapshot isolation is active).
+	var reviewErr error
 	if snap != nil && s.differ != nil && s.reviewer != nil && s.flusher != nil {
-		if reviewErr := s.runReview(snap, matcher); reviewErr != nil {
+		reviewErr = s.runReview(snap, matcher)
+		if reviewErr != nil {
 			s.logger.Error("review/flush failed", "error", reviewErr)
-			// Don't mask terminal errors with review errors.
 		}
 	}
 
-	return termErr
+	// Return terminal error if present; otherwise surface review error.
+	if termErr != nil {
+		return termErr
+	}
+	return reviewErr
 }
 
 // runReview performs the diff → review → flush sequence after the VM is stopped.

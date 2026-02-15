@@ -47,7 +47,8 @@ func copyFile(src, dst string) error {
 }
 
 // ValidateInBounds verifies that targetPath (after resolution) is within
-// basePath. Returns an error if the target escapes the base directory.
+// basePath. Symlinks in targetPath are resolved to prevent symlink-based
+// traversal attacks.
 func ValidateInBounds(basePath, targetPath string) error {
 	absBase, err := filepath.Abs(basePath)
 	if err != nil {
@@ -59,11 +60,47 @@ func ValidateInBounds(basePath, targetPath string) error {
 		return fmt.Errorf("resolving target path: %w", err)
 	}
 
+	// Resolve symlinks in the target to catch symlink-based traversal.
+	// If the target doesn't exist yet (e.g., new file being flushed),
+	// resolve the longest existing prefix.
+	resolved, err := resolveExistingPrefix(absTarget)
+	if err != nil {
+		return fmt.Errorf("resolving symlinks in target: %w", err)
+	}
+
 	// Ensure base ends with separator for prefix check.
 	basePrefix := absBase + string(filepath.Separator)
-	if absTarget != absBase && !strings.HasPrefix(absTarget, basePrefix) {
-		return fmt.Errorf("path %q escapes base directory %q", absTarget, absBase)
+	if resolved != absBase && !strings.HasPrefix(resolved, basePrefix) {
+		return fmt.Errorf("path %q (resolved: %q) escapes base directory %q", absTarget, resolved, absBase)
 	}
 
 	return nil
+}
+
+// resolveExistingPrefix resolves symlinks for the longest existing prefix
+// of the given path. For paths where the final component(s) don't exist yet,
+// this resolves the parent directories that do exist.
+func resolveExistingPrefix(path string) (string, error) {
+	// Try resolving the full path first.
+	resolved, err := filepath.EvalSymlinks(path)
+	if err == nil {
+		return resolved, nil
+	}
+
+	// Walk up until we find an existing directory, resolve it,
+	// then append the remaining components.
+	dir := filepath.Dir(path)
+	base := filepath.Base(path)
+
+	if dir == path {
+		// Reached the root without finding an existing path.
+		return path, nil
+	}
+
+	resolvedDir, err := resolveExistingPrefix(dir)
+	if err != nil {
+		return "", err
+	}
+
+	return filepath.Join(resolvedDir, base), nil
 }

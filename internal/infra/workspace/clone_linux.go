@@ -6,7 +6,6 @@
 package workspace
 
 import (
-	"fmt"
 	"os"
 
 	"golang.org/x/sys/unix"
@@ -22,31 +21,33 @@ func NewPlatformCloner() FileCloner {
 
 // CloneFile attempts a FICLONE ioctl for COW, falling back to regular copy.
 func (c *linuxCloner) CloneFile(src, dst string) error {
+	// Try FICLONE first by opening both files.
+	if err := c.tryFiclone(src, dst); err == nil {
+		return nil
+	}
+
+	// FICLONE not supported (e.g. ext4, tmpfs) — fall back to regular copy.
+	return copyFile(src, dst)
+}
+
+// tryFiclone attempts a FICLONE ioctl. Returns nil on success, error otherwise.
+func (c *linuxCloner) tryFiclone(src, dst string) error {
 	srcFile, err := os.Open(src)
 	if err != nil {
-		return fmt.Errorf("opening source for clone: %w", err)
+		return err
 	}
 	defer func() { _ = srcFile.Close() }()
 
 	srcInfo, err := srcFile.Stat()
 	if err != nil {
-		return fmt.Errorf("stat source for clone: %w", err)
+		return err
 	}
 
 	dstFile, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, srcInfo.Mode())
 	if err != nil {
-		return fmt.Errorf("creating dest for clone: %w", err)
+		return err
 	}
 	defer func() { _ = dstFile.Close() }()
 
-	// Try FICLONE — this is a reflink/COW clone.
-	err = unix.IoctlFileClone(int(dstFile.Fd()), int(srcFile.Fd()))
-	if err == nil {
-		return nil
-	}
-
-	// FICLONE not supported (e.g. ext4, tmpfs) — fall back to regular copy.
-	// Close and re-create to reset file position.
-	_ = dstFile.Close()
-	return copyFile(src, dst)
+	return unix.IoctlFileClone(int(dstFile.Fd()), int(srcFile.Fd()))
 }

@@ -241,9 +241,14 @@ func TestCleanupStaleSnapshots(t *testing.T) {
 	workspaceDir := filepath.Join(parentDir, "my-project")
 	require.NoError(t, os.MkdirAll(workspaceDir, 0o755))
 
-	// Create a stale snapshot dir.
+	// Create a stale snapshot dir WITH sentinel file.
 	staleDir := filepath.Join(parentDir, ".sandbox-snapshot-abc123")
 	require.NoError(t, os.MkdirAll(staleDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(staleDir, ".sandbox-snapshot-sentinel"), []byte("active"), 0o600))
+
+	// Create a snapshot-prefixed dir WITHOUT sentinel (should not be removed).
+	noSentinelDir := filepath.Join(parentDir, ".sandbox-snapshot-no-sentinel")
+	require.NoError(t, os.MkdirAll(noSentinelDir, 0o755))
 
 	// Create a non-snapshot dir (should not be removed).
 	otherDir := filepath.Join(parentDir, "other-project")
@@ -253,7 +258,10 @@ func TestCleanupStaleSnapshots(t *testing.T) {
 	CleanupStaleSnapshots(workspaceDir, logger)
 
 	_, err := os.Stat(staleDir)
-	assert.True(t, os.IsNotExist(err), "stale snapshot should be removed")
+	assert.True(t, os.IsNotExist(err), "stale snapshot with sentinel should be removed")
+
+	_, err = os.Stat(noSentinelDir)
+	assert.NoError(t, err, "snapshot dir without sentinel should remain")
 
 	_, err = os.Stat(otherDir)
 	assert.NoError(t, err, "non-snapshot dir should remain")
