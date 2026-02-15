@@ -270,6 +270,13 @@ func (s *Server) runWithPTY(ch ssh.Channel, cmd *exec.Cmd, state *sessionState, 
 
 	// Wait for process to exit.
 	err = cmd.Wait()
+
+	// Close the channel to unblock the channel→pty goroutine which is
+	// stuck on ch.Read(). Without this, wg.Wait() deadlocks because
+	// the goroutine never returns — the channel stays open until
+	// handleSession's defer, which can't run until we return.
+	_ = ch.CloseWrite()
+
 	wg.Wait()
 
 	return exitCode(err)
