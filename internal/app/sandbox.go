@@ -71,6 +71,26 @@ type SandboxDeps struct {
 	Differ          snapshot.Differ
 }
 
+// Sandbox holds the state of a running sandbox session.
+// Created by Prepare, consumed by Attach/Stop/Changes/Flush/Cleanup.
+type Sandbox struct {
+	Agent         agent.Agent
+	VM            domvm.VM
+	VMConfig      domvm.VMConfig
+	Snapshot      *workspace.Snapshot
+	WorkspacePath string
+	DiffMatcher   snapshot.Matcher
+	EnvVars       map[string]string
+}
+
+// Cleanup releases resources (snapshot dir). Safe to call multiple times.
+func (sb *Sandbox) Cleanup() error {
+	if sb.Snapshot != nil {
+		return sb.Snapshot.Cleanup()
+	}
+	return nil
+}
+
 // SandboxRunner orchestrates the full sandbox VM lifecycle:
 // resolve agent, load config, collect env, start VM, run terminal, stop VM.
 type SandboxRunner struct {
