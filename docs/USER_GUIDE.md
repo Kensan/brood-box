@@ -62,6 +62,9 @@ sandbox-agent <agent-name> [flags]
 | `--ssh-port` | Auto-pick | Host port forwarded to guest SSH (port 22) |
 | `--config` | `~/.config/sandbox-agent/config.yaml` | Config file path |
 | `--image` | Agent default | Override the OCI image reference |
+| `--no-review` | `false` | Disable snapshot isolation, mount workspace directly |
+| `--exclude` | (none) | Additional gitignore-style exclude patterns (repeatable) |
+| `--debug` | `false` | Enable debug logging |
 
 ### Subcommands
 
@@ -74,19 +77,30 @@ sandbox-agent <agent-name> [flags]
 
 1. **Resolve agent** -- Looks up the agent name in the built-in registry
    (and any custom agents from your config file).
-2. **Load config** -- Reads `~/.config/sandbox-agent/config.yaml` and merges
-   overrides with built-in agent defaults and CLI flags.
+2. **Load config** -- Reads `~/.config/sandbox-agent/config.yaml` and
+   per-workspace `.sandbox-agent.yaml`, merges overrides with built-in
+   agent defaults and CLI flags.
 3. **Collect environment** -- Matches your host environment variables against
    the agent's forwarding patterns (e.g., `ANTHROPIC_API_KEY`, `CLAUDE_*`)
    and collects them for injection into the VM.
-4. **Boot VM** -- Pulls the OCI image, extracts it into a rootfs, injects
-   SSH keys + init script + env file, and starts a libkrun microVM.
-5. **Wait for SSH** -- Polls the VM until the SSH server is ready.
-6. **Interactive session** -- Opens a PTY-forwarded SSH session into the VM
+4. **Create snapshot** -- If review is enabled (the default), creates a
+   copy-on-write snapshot of your workspace. The agent works on the
+   snapshot, not your real files.
+5. **Boot VM** -- Pulls the OCI image, extracts it into a rootfs, injects
+   SSH keys + init binary + env file, and starts a libkrun microVM.
+6. **Wait for SSH** -- Polls the VM until the embedded SSH server is ready.
+7. **Interactive session** -- Opens a PTY-forwarded SSH session into the VM
    with your terminal size, sources the env file, `cd /workspace`, and
    `exec`s the agent command.
-7. **Cleanup** -- When the agent exits (or you press Ctrl+C), the VM is
-   gracefully shut down and ephemeral SSH keys are deleted.
+8. **Stop VM** -- When the agent exits (or you press Ctrl+C), the VM is
+   gracefully shut down.
+9. **Diff** -- Compares the snapshot against the original workspace using
+   SHA-256 hashes to detect added, modified, and deleted files.
+10. **Review** -- Presents each changed file interactively so you can
+    accept or reject individual changes.
+11. **Flush** -- Copies accepted changes back to your real workspace,
+    re-verifying hashes before writing.
+12. **Cleanup** -- Removes the snapshot directory and ephemeral SSH keys.
 
 ## Configuration
 
@@ -137,6 +151,89 @@ Patterns in `env_forward` support:
 
 Variables are injected into `/etc/sandbox-env` inside the VM and sourced
 before the agent starts. Values are shell-escaped for safety.
+
+## Workspace Snapshot Isolation
+
+By default, sandbox-agent creates a copy-on-write (COW) snapshot of your
+workspace before the agent starts. The agent works on the snapshot, and
+after it finishes you review changes per-file before they touch your real
+workspace.
+
+### How It Works
+
+```
+Your workspace ──COW copy──▶ Snapshot directory
+                                    │
+                              Agent works here
+                                    │
+                              VM stopped
+                                    │
+                              Diff (SHA-256)
+                                    │
+                              Review per-file
+                                    │
+                        Accepted changes ──▶ Your workspace
+```
+
+### Disabling Review
+
+Pass `--no-review` to mount the workspace directly into the VM with no
+snapshot isolation:
+
+```bash
+sandbox-agent claude-code --no-review
+```
+
+### Exclude Patterns
+
+Certain files are automatically excluded from the snapshot:
+
+**Security patterns** (non-overridable — always excluded):
+- `.env*`, `*.pem`, `*.key`, `.ssh/`, `.aws/`, `.gcp/`, `credentials.json`
+- `.sandbox-agent.yaml`, `.kube/config`, `.gnupg/`, and more
+
+**Performance patterns** (overridable — can be negated in `.sandboxignore`):
+- `node_modules/`, `vendor/`, `.git/objects/`, `__pycache__/`, `target/`,
+  `build/`, `dist/`, `.venv/`, `.tox/`
+
+Add extra patterns via the CLI:
+
+```bash
+sandbox-agent claude-code --exclude "*.log" --exclude "tmp/"
+```
+
+### `.sandboxignore`
+
+Create a `.sandboxignore` file in your workspace root (gitignore syntax)
+to exclude additional paths:
+
+```gitignore
+# Exclude large data files
+data/
+*.csv
+
+# Re-include a performance-excluded directory
+!vendor/
+```
+
+Security patterns cannot be negated — attempts are logged as warnings.
+
+### Per-Workspace Config
+
+Create `.sandbox-agent.yaml` in your workspace root to set per-project
+defaults:
+
+```yaml
+defaults:
+  cpus: 4
+  memory: 4096
+review:
+  exclude_patterns:
+    - "*.log"
+```
+
+Note: `review.enabled` is **ignored** in per-workspace config for security
+(use `--no-review` explicitly).
 
 ## Signals and Cleanup
 

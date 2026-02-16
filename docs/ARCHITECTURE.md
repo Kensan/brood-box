@@ -6,19 +6,27 @@ and dependency injection throughout.
 ## Layers
 
 ```
-cmd/sandbox-agent/main.go   (composition root — wires everything)
+cmd/sandbox-agent/main.go     (composition root — wires everything)
+cmd/sandbox-init/main.go      (guest PID 1 init binary)
         │
         ▼
-   app/sandbox.go            (application service — orchestrates domain + infra)
+   app/sandbox.go              (application service — orchestrates domain + infra)
         │
-   ┌────┼────────────────┐
-   ▼    ▼                ▼
-domain/agent/        domain/config/       (pure domain — no imports from infra)
-   │                     │
-   │    ┌────────────────┤
-   ▼    ▼                ▼
-infra/vm/          infra/ssh/         infra/config/     infra/agent/
-(propolis)         (PTY terminal)     (YAML loader)     (built-in registry)
+   ┌────┼─────────────────────────────────────────────┐
+   ▼    ▼                ▼                ▼            ▼
+domain/agent/     domain/config/    domain/vm/    domain/session/
+domain/snapshot/  domain/workspace/
+   (pure domain — no imports from infra)
+   │
+   │    ┌────────────────┬────────────────┬──────────────┐
+   ▼    ▼                ▼                ▼              ▼
+infra/vm/         infra/ssh/        infra/config/   infra/agent/
+(propolis)        (PTY terminal)    (YAML loader)   (built-in registry)
+infra/exclude/    infra/workspace/  infra/diff/     infra/review/
+(pattern match)   (COW cloning)     (SHA-256 diff)  (reviewer+flusher)
+
+guest/boot/  guest/mount/  guest/network/  guest/env/  guest/sshd/  guest/reaper/
+   (guest VM packages — Linux only, runs inside microVM)
 ```
 
 ### Domain Layer (`internal/domain/`)
@@ -34,6 +42,17 @@ defines the core types and interfaces.
 - **`config/config.go`** -- `Config`, `DefaultsConfig`, `AgentOverride`
   structs (pure data, YAML tags). `Merge()` combines agent + override +
   defaults with clear precedence rules.
+- **`vm/vm.go`** -- `VMRunner` interface (`Start` → `VM`), `VM` interface
+  (`Stop`, `SSHPort`, `DataDir`, `SSHKeyPath`), `VMConfig` value object.
+- **`session/session.go`** -- `TerminalSession` interface (`Run` with
+  `SessionOpts` for host, port, user, key path, command, I/O streams).
+- **`workspace/workspace.go`** -- `WorkspaceCloner` interface
+  (`CreateSnapshot` → `*Snapshot`), `Snapshot` type with `Cleanup()`.
+- **`snapshot/snapshot.go`** -- `FileChange` (RelPath, Kind, UnifiedDiff,
+  Hash), `ReviewDecision`, `ReviewResult`. Domain interfaces: `Matcher`,
+  `Differ`, `Reviewer`, `Flusher`.
+- **`snapshot/exclude.go`** -- `ExcludeConfig` with security patterns
+  (non-overridable) and performance patterns (overridable).
 
 **Rule**: `domain/` NEVER imports from `infra/` or `app/`.
 
@@ -44,9 +63,14 @@ The `SandboxRunner` orchestrates the full lifecycle:
 1. Resolve agent from registry
 2. Load config and merge overrides
 3. Collect forwarded env vars
-4. Start VM via `VMRunner`
-5. Run interactive terminal session
-6. Stop VM on exit
+4. Create workspace snapshot (if review enabled)
+5. Start VM via `VMRunner`
+6. Run interactive terminal session
+7. Stop VM explicitly (before diff/review)
+8. Diff snapshot against original workspace
+9. Interactive per-file review
+10. Flush accepted changes to original workspace
+11. Cleanup snapshot
 
 All dependencies are injected via the `SandboxDeps` struct. The
 orchestrator has no direct dependency on propolis, SSH libraries, or
@@ -60,7 +84,7 @@ Concrete implementations of domain interfaces and system integration.
   `propolis.Run()` with options for ports, virtio-fs, rootfs hooks,
   init override, and post-boot SSH readiness check.
 - **`vm/hooks.go`** -- Three `RootFSHook` factories: `InjectSSHKeys`,
-  `InjectInitScript`, `InjectEnvFile`. These modify the extracted rootfs
+  `InjectInitBinary`, `InjectEnvFile`. These modify the extracted rootfs
   before the VM boots.
 - **`ssh/terminal.go`** -- `InteractiveSession` implements PTY-forwarded
   SSH sessions with raw terminal mode, SIGWINCH handling, and context
@@ -71,6 +95,18 @@ Concrete implementations of domain interfaces and system integration.
 - **`agent/registry.go`** -- In-memory `Registry` pre-loaded with
   built-in agents (claude-code, codex, opencode). Supports adding
   custom agents from config.
+- **`exclude/`** -- Two-tier gitignore-compatible pattern matching.
+  Security patterns are non-overridable; performance patterns can be
+  negated in `.sandboxignore`.
+- **`workspace/`** -- COW workspace cloning using FICLONE (Linux),
+  clonefile (macOS), or copy fallback. Includes stale snapshot cleanup
+  and symlink validation for path traversal protection.
+- **`diff/`** -- SHA-256 based file differ. Builds hash indices of
+  original and snapshot directories, detects added/modified/deleted
+  files, generates unified diffs.
+- **`review/`** -- Interactive per-file terminal reviewer and filesystem
+  flusher with hash re-verification between diff and flush (TOCTOU
+  protection).
 
 ### Composition Root (`cmd/sandbox-agent/main.go`)
 
@@ -101,15 +137,26 @@ type EnvProvider interface {
 type SandboxDeps struct {
     Registry    agent.Registry
     VMRunner    vm.VMRunner
-    Terminal    infrassh.TerminalSession
-    CfgLoader   *infraconfig.Loader
+    Terminal    session.TerminalSession
+    Config      *config.Config
     EnvProvider agent.EnvProvider
     Logger      *slog.Logger
+
+    // Snapshot isolation (nil when review disabled)
+    WorkspaceCloner workspace.WorkspaceCloner
+    Differ          snapshot.Differ
+    Reviewer        snapshot.Reviewer
+    Flusher         snapshot.Flusher
+
+    // I/O streams for PTY operations
+    Stdin  *os.File
+    Stdout *os.File
+    Stderr *os.File
 }
 
 // Infra provides implementations
 // vm.PropolisRunner implements vm.VMRunner
-// ssh.InteractiveSession implements ssh.TerminalSession
+// ssh.InteractiveSession implements session.TerminalSession
 // agent.Registry implements agent.Registry
 ```
 
@@ -122,6 +169,9 @@ This makes the app layer fully testable with mocks — see
 sandbox-agent claude-code
         │
         ▼
+   Create workspace snapshot (if review enabled)
+        │
+        ▼
    Pull OCI image (propolis handles caching)
         │
         ▼
@@ -129,12 +179,12 @@ sandbox-agent claude-code
         │
         ▼
    Run rootfs hooks:
-     1. InjectSSHKeys  → /root/.ssh/authorized_keys
-     2. InjectInitScript → /sandbox-init.sh
-     3. InjectEnvFile  → /etc/sandbox-env
+     1. InjectSSHKeys    → /home/sandbox/.ssh/authorized_keys
+     2. InjectInitBinary → /sandbox-init (compiled Go binary)
+     3. InjectEnvFile    → /etc/sandbox-env
         │
         ▼
-   Write .krun_config.json (init override → /sandbox-init.sh)
+   Write .krun_config.json (init override → /sandbox-init)
         │
         ▼
    Start networking (in-process, gvisor-tap-vsock)
@@ -143,13 +193,16 @@ sandbox-agent claude-code
    Spawn propolis-runner (libkrun microVM)
         │
         ▼
-   Guest boots:
-     /sandbox-init.sh:
-       - ip link set lo up
-       - udhcpc (DHCP)
-       - sshd -D (background)
-       - mount virtiofs workspace → /workspace
-       - wait
+   Guest boots (/sandbox-init as PID 1):
+     sandbox-init → guest/boot.Run():
+       - Mount essential filesystems (/proc, /sys, /dev, /tmp, /run)
+       - Configure loopback networking (netlink)
+       - Mount virtiofs workspace → /workspace
+       - Load /etc/sandbox-env into environment
+       - Parse authorized_keys
+       - Start embedded Go SSH server on port 22
+       - Start child reaper (PID 1 duty)
+       - Wait for signals (SIGTERM/SIGINT → graceful shutdown)
         │
         ▼
    Post-boot hook: WaitForReady (SSH poll)
@@ -161,8 +214,27 @@ sandbox-agent claude-code
      exec claude   (or codex, opencode, etc.)
         │
         ▼
-   Agent exits → SSH session ends → VM stopped → cleanup
+   Agent exits → SSH session ends → VM stopped
+        │
+        ▼
+   Diff → Review → Flush (if snapshot enabled) → Cleanup
 ```
+
+## Guest Layer (`internal/guest/`)
+
+Code that runs inside the microVM (Linux only, compiled into
+`cmd/sandbox-init/`):
+
+- **`boot/`** -- Orchestrates guest startup: mount filesystems,
+  configure networking, mount workspace, load env, start SSH server.
+  Returns a shutdown function.
+- **`mount/`** -- Mounts essential filesystems (/proc, /sys, /dev, /tmp,
+  /run) and virtiofs workspace with retry logic.
+- **`network/`** -- Configures loopback interface via netlink.
+- **`env/`** -- Parses KEY=VALUE lines from `/etc/sandbox-env`.
+- **`sshd/`** -- Embedded Go SSH server with authorized key auth, PTY
+  support, command wrapping, and process exit code forwarding.
+- **`reaper/`** -- Reaps orphaned child processes (required for PID 1).
 
 ## Guest Environment
 
@@ -172,9 +244,9 @@ Inside the VM:
 |------|----------|
 | `/workspace` | Host workspace directory (virtio-fs mount) |
 | `/etc/sandbox-env` | `export KEY='value'` lines for forwarded vars |
-| `/root/.ssh/authorized_keys` | Ephemeral public key for SSH access |
-| `/sandbox-init.sh` | Init script (networking, sshd, mounts) |
-| `/.krun_config.json` | libkrun config pointing to `/sandbox-init.sh` |
+| `/home/sandbox/.ssh/authorized_keys` | Ephemeral public key for SSH access |
+| `/sandbox-init` | Compiled Go init binary (PID 1) |
+| `/.krun_config.json` | libkrun config pointing to `/sandbox-init` |
 
 ## Security Model
 
@@ -187,6 +259,18 @@ Inside the VM:
   single-quote escaped to prevent injection.
 - **No persistent state**: sandbox-agent doesn't maintain any state
   between runs. Each invocation is fully ephemeral.
+- **Snapshot hash verification**: File hashes are re-verified between
+  diff and flush to prevent TOCTOU (time-of-check-time-of-use) attacks.
+- **Path traversal protection**: Symlinks are validated in-bounds before
+  copying. `ValidateInBounds` resolves symlinks in both base and target.
+- **Non-overridable security patterns**: Sensitive files (`.env*`,
+  `*.pem`, `.ssh/`, credentials, etc.) are always excluded from snapshots
+  and cannot be negated in `.sandboxignore`.
+- **Permission stripping**: Setuid, setgid, and sticky bits are stripped
+  when flushing files back to the original workspace.
+- **VM stopped before review**: The VM is explicitly stopped before
+  diff/review/flush, preventing the agent from modifying files during
+  the review phase.
 
 ## Relationship to Propolis
 
@@ -206,8 +290,8 @@ replace github.com/stacklok/propolis => ../propolis
 | `WithCPUs` / `WithMemory` | Set VM resources |
 | `WithPorts` | Forward SSH (host → guest:22) |
 | `WithVirtioFS` | Mount workspace directory |
-| `WithRootFSHook` | Inject SSH keys, init script, env file |
-| `WithInitOverride` | Replace OCI CMD with `/sandbox-init.sh` |
+| `WithRootFSHook` | Inject SSH keys, init binary, env file |
+| `WithInitOverride` | Replace OCI CMD with `/sandbox-init` |
 | `WithPostBoot` | Wait for SSH readiness |
 | `WithRunnerPath` | Locate propolis-runner binary |
 | `ssh.GenerateKeyPair` | Create ephemeral SSH keys |

@@ -8,16 +8,24 @@ Module: `github.com/stacklok/sandbox-agent`
 ## Commands
 
 ```bash
-task build         # Build sandbox-agent (pure Go, no CGO)
-task build-dev     # Build sandbox-agent + propolis-runner (requires libkrun-devel)
-task test          # go test -v -race ./...
-task lint          # golangci-lint run ./...
-task lint-fix      # Auto-fix lint issues
-task fmt           # go fmt + goimports
-task tidy          # go mod tidy
-task verify        # fmt + lint + test
-task run           # Build and run
-task clean         # Remove bin/ and coverage files
+task build             # Build sandbox-agent (pure Go, no CGO)
+task build-init        # Cross-compile sandbox-init for guest VM
+task build-dev         # Build sandbox-agent + propolis-runner (requires libkrun-devel)
+task test              # go test -v -race ./...
+task test-coverage     # Run tests with coverage report
+task lint              # golangci-lint run ./...
+task lint-fix          # Auto-fix lint issues
+task fmt               # go fmt + goimports
+task tidy              # go mod tidy
+task verify            # fmt + lint + test
+task run               # Build and run
+task clean             # Remove bin/ and coverage files
+task image-base        # Build base guest image
+task image-claude-code # Build claude-code guest image
+task image-codex       # Build codex guest image
+task image-opencode    # Build opencode guest image
+task image-all         # Build all guest images
+task image-push        # Push all images to GHCR
 ```
 
 Run a single test: `go test -v -race -run TestName ./path/to/package`
@@ -26,19 +34,34 @@ Run a single test: `go test -v -race -run TestName ./path/to/package`
 
 DDD layered architecture with dependency injection:
 
-- `cmd/sandbox-agent/main.go` — Composition root, wires dependencies, Cobra CLI
-- `internal/domain/agent/` — Agent value object, env forwarding (pure domain, no I/O)
-- `internal/domain/config/` — Config types, merge logic (pure data)
+**Domain** (pure types and interfaces — no I/O):
+- `internal/domain/agent/` — Agent value object, env forwarding
+- `internal/domain/config/` — Config types, merge logic
+- `internal/domain/vm/` — VMRunner, VM, VMConfig interfaces
+- `internal/domain/session/` — TerminalSession interface
+- `internal/domain/workspace/` — WorkspaceCloner interface, Snapshot type
+- `internal/domain/snapshot/` — FileChange, ExcludeConfig, Matcher, Differ, Reviewer, Flusher
+
+**Application**:
 - `internal/app/` — SandboxRunner orchestrator (application service)
+
+**Infrastructure** (concrete implementations):
 - `internal/infra/vm/` — Propolis VMRunner implementation, rootfs hooks
 - `internal/infra/ssh/` — Interactive PTY terminal session
 - `internal/infra/config/` — YAML config loader
 - `internal/infra/agent/` — Built-in agent registry
-- `internal/domain/snapshot/` — Snapshot isolation domain types (FileChange, ExcludeConfig, ReviewDecision)
 - `internal/infra/exclude/` — Gitignore-compatible exclude pattern loading + two-tier matching
 - `internal/infra/workspace/` — COW workspace cloning (FICLONE on Linux, clonefile on macOS, copy fallback)
 - `internal/infra/diff/` — SHA-256 based file diff engine
 - `internal/infra/review/` — Interactive per-file terminal review + flusher with hash verification
+
+**Guest VM** (Linux only — runs inside the microVM):
+- `internal/guest/` — Boot, mount, network, env, sshd, reaper packages
+- `cmd/sandbox-init/` — Guest PID 1 init binary (compiled Go)
+
+**CLI + Build**:
+- `cmd/sandbox-agent/main.go` — Composition root, wires dependencies, Cobra CLI
+- `internal/version/` — Version/commit info via ldflags
 
 **Rule**: `domain/` NEVER imports from `infra/` or `app/`. Interfaces live in domain, implementations in infra.
 

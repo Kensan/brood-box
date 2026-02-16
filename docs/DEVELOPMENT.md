@@ -33,6 +33,7 @@ task verify
 | Command | Description |
 |---------|-------------|
 | `task build` | Build `bin/sandbox-agent` (pure Go, `CGO_ENABLED=0`) |
+| `task build-init` | Cross-compile `sandbox-init` for guest VM (Linux only) |
 | `task build-dev` | Build sandbox-agent + `bin/propolis-runner` (requires libkrun-devel) |
 | `task test` | Run tests with race detector |
 | `task test-coverage` | Run tests with coverage report |
@@ -49,34 +50,6 @@ task verify
 | `task image-opencode` | Build opencode guest image |
 | `task image-all` | Build all guest images |
 | `task image-push` | Push all images to GHCR |
-
-## Project Layout
-
-```
-sandbox-agent/
-├── cmd/sandbox-agent/main.go     # CLI entrypoint and dependency wiring
-├── internal/
-│   ├── domain/                   # Pure business logic (no I/O)
-│   │   ├── agent/                # Agent type, registry interface, env forwarding
-│   │   └── config/               # Config types, merge logic
-│   ├── app/                      # Application orchestrator
-│   │   ├── sandbox.go            # SandboxRunner (the main use case)
-│   │   └── sandbox_test.go       # Tests with full mock injection
-│   └── infra/                    # Infrastructure implementations
-│       ├── agent/registry.go     # Built-in agent registry
-│       ├── config/loader.go      # YAML config file reader
-│       ├── vm/                   # Propolis VM runner + rootfs hooks
-│       └── ssh/terminal.go       # Interactive PTY SSH session
-├── images/                       # OCI guest image definitions
-│   ├── base/Containerfile        # Wolfi base: sshd, bash, git, coreutils
-│   ├── claude-code/Containerfile # Base + Claude Code binary
-│   ├── codex/Containerfile       # Base + Codex binary
-│   └── opencode/Containerfile    # Base + OpenCode binary
-├── docs/                         # Documentation
-├── Taskfile.yaml                 # Development task runner
-├── CLAUDE.md                     # AI assistant instructions
-└── go.mod                        # Module with local propolis replace
-```
 
 ## Adding a New Built-in Agent
 
@@ -119,9 +92,17 @@ runner := app.NewSandboxRunner(app.SandboxDeps{
     Registry:    &mockRegistry{...},
     VMRunner:    &mockVMRunner{...},
     Terminal:    &mockTerminal{...},
-    CfgLoader:   infraconfig.NewLoader(tempConfigPath),
+    Config:      &config.Config{...},
     EnvProvider: &mockEnvProvider{...},
     Logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+    // Snapshot isolation deps (nil to disable review)
+    WorkspaceCloner: &mockCloner{...},
+    Differ:          &mockDiffer{...},
+    Reviewer:        &mockReviewer{...},
+    Flusher:         &mockFlusher{...},
+    Stdin:           os.Stdin,
+    Stdout:          os.Stdout,
+    Stderr:          os.Stderr,
 })
 ```
 
