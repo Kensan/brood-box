@@ -14,8 +14,12 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/stacklok/sandbox-agent/internal/infra/exclude"
+	"github.com/stacklok/sandbox-agent/internal/domain/snapshot"
+	domws "github.com/stacklok/sandbox-agent/internal/domain/workspace"
 )
+
+// Ensure FSWorkspaceCloner implements domws.WorkspaceCloner at compile time.
+var _ domws.WorkspaceCloner = (*FSWorkspaceCloner)(nil)
 
 // snapshotDirPrefix is the prefix for snapshot temporary directories.
 const snapshotDirPrefix = ".sandbox-snapshot-"
@@ -23,29 +27,6 @@ const snapshotDirPrefix = ".sandbox-snapshot-"
 // snapshotSentinel is a marker file placed inside snapshot directories
 // to identify them as sandbox snapshots (vs unrelated directories).
 const snapshotSentinel = ".sandbox-snapshot-sentinel"
-
-// Snapshot holds references to the original and snapshot workspace paths.
-type Snapshot struct {
-	// OriginalPath is the real workspace directory.
-	OriginalPath string
-
-	// SnapshotPath is the COW clone directory.
-	SnapshotPath string
-}
-
-// Cleanup removes the snapshot directory.
-func (s *Snapshot) Cleanup() error {
-	if s.SnapshotPath == "" {
-		return nil
-	}
-	return os.RemoveAll(s.SnapshotPath)
-}
-
-// WorkspaceCloner creates workspace snapshots.
-type WorkspaceCloner interface {
-	// CreateSnapshot creates a COW snapshot of the workspace.
-	CreateSnapshot(ctx context.Context, workspacePath string, matcher exclude.Matcher) (*Snapshot, error)
-}
 
 // FSWorkspaceCloner creates file-system-based workspace snapshots.
 type FSWorkspaceCloner struct {
@@ -63,7 +44,7 @@ func NewFSWorkspaceCloner(cloner FileCloner, logger *slog.Logger) *FSWorkspaceCl
 
 // CreateSnapshot walks the source tree, selectively copying files that are not
 // excluded by the matcher. Symlinks pointing outside the workspace are skipped.
-func (c *FSWorkspaceCloner) CreateSnapshot(ctx context.Context, workspacePath string, matcher exclude.Matcher) (*Snapshot, error) {
+func (c *FSWorkspaceCloner) CreateSnapshot(ctx context.Context, workspacePath string, matcher snapshot.Matcher) (*domws.Snapshot, error) {
 	absWorkspace, err := filepath.Abs(workspacePath)
 	if err != nil {
 		return nil, fmt.Errorf("resolving workspace path: %w", err)
@@ -149,7 +130,7 @@ func (c *FSWorkspaceCloner) CreateSnapshot(ctx context.Context, workspacePath st
 	}
 
 	success = true
-	return &Snapshot{
+	return &domws.Snapshot{
 		OriginalPath: absWorkspace,
 		SnapshotPath: tmpDir,
 	}, nil
@@ -160,7 +141,7 @@ func (c *FSWorkspaceCloner) CreateSnapshot(ctx context.Context, workspacePath st
 //
 // Security: reads the symlink target only once to prevent TOCTOU attacks
 // where the symlink is modified between check and use.
-func (c *FSWorkspaceCloner) handleSymlink(workspaceRoot, path, relPath, destPath string, matcher exclude.Matcher) error {
+func (c *FSWorkspaceCloner) handleSymlink(workspaceRoot, path, relPath, destPath string, matcher snapshot.Matcher) error {
 	if matcher.Match(relPath) {
 		c.logger.Debug("excluding symlink from snapshot", "path", relPath)
 		return nil

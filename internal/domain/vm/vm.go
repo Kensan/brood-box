@@ -1,0 +1,54 @@
+// SPDX-FileCopyrightText: Copyright 2025 Stacklok, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+// Package vm defines domain interfaces and types for sandbox VM management.
+package vm
+
+import "context"
+
+// VMConfig holds the parameters needed to start a sandbox VM.
+type VMConfig struct {
+	// Name is a unique name for this VM instance.
+	Name string
+
+	// Image is the OCI image reference to pull and boot.
+	Image string
+
+	// CPUs is the number of vCPUs.
+	CPUs uint32
+
+	// Memory is the RAM in MiB.
+	Memory uint32
+
+	// SSHPort is the host port to forward to guest port 22.
+	// If 0, an ephemeral port will be chosen.
+	SSHPort uint16
+
+	// WorkspacePath is the host directory to mount as /workspace in the VM.
+	WorkspacePath string
+
+	// EnvVars are environment variables to inject into the VM.
+	EnvVars map[string]string
+}
+
+// VMRunner creates and manages sandbox VMs.
+type VMRunner interface {
+	// Start boots a VM with the given configuration. The returned VM must
+	// be stopped when no longer needed.
+	Start(ctx context.Context, cfg VMConfig) (VM, error)
+}
+
+// VM represents a running sandbox VM.
+type VM interface {
+	// Stop gracefully shuts down the VM.
+	Stop(ctx context.Context) error
+
+	// SSHPort returns the host port mapped to guest SSH.
+	SSHPort() uint16
+
+	// DataDir returns the VM's data directory.
+	DataDir() string
+
+	// SSHKeyPath returns the path to the ephemeral SSH private key.
+	SSHKeyPath() string
+}

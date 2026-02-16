@@ -24,8 +24,8 @@ import (
 	"github.com/stacklok/sandbox-agent/internal/infra/diff"
 	"github.com/stacklok/sandbox-agent/internal/infra/review"
 	infrassh "github.com/stacklok/sandbox-agent/internal/infra/ssh"
-	"github.com/stacklok/sandbox-agent/internal/infra/vm"
-	"github.com/stacklok/sandbox-agent/internal/infra/workspace"
+	infravm "github.com/stacklok/sandbox-agent/internal/infra/vm"
+	infraws "github.com/stacklok/sandbox-agent/internal/infra/workspace"
 	"github.com/stacklok/sandbox-agent/internal/version"
 )
 
@@ -161,7 +161,7 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 
 	// Clean up stale snapshot dirs from previous crashes.
 	if !flags.noReview {
-		workspace.CleanupStaleSnapshots(ws, logger)
+		infraws.CleanupStaleSnapshots(ws, logger)
 	}
 
 	// Build registry with config-based custom agents.
@@ -219,7 +219,7 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 	// Wire dependencies.
 	deps := app.SandboxDeps{
 		Registry:    registry,
-		VMRunner:    vm.NewPropolisRunner("", logger),
+		VMRunner:    infravm.NewPropolisRunner("", logger),
 		Terminal:    infrassh.NewInteractiveSession(logger),
 		Config:      cfg,
 		EnvProvider: agent.NewOSEnvProvider(os.Environ),
@@ -231,8 +231,8 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 
 	// Wire snapshot isolation dependencies only when review is enabled.
 	if reviewEnabled {
-		deps.WorkspaceCloner = workspace.NewFSWorkspaceCloner(
-			workspace.NewPlatformCloner(), logger,
+		deps.WorkspaceCloner = infraws.NewFSWorkspaceCloner(
+			infraws.NewPlatformCloner(), logger,
 		)
 		deps.Reviewer = review.NewInteractiveReviewer(os.Stdin, os.Stdout)
 		deps.Flusher = review.NewFSFlusher()

@@ -18,42 +18,12 @@ import (
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/term"
+
+	"github.com/stacklok/sandbox-agent/internal/domain/session"
 )
 
-// SessionOpts configures an interactive terminal session.
-type SessionOpts struct {
-	// Host is the SSH server host (e.g., "127.0.0.1").
-	Host string
-
-	// Port is the SSH server port.
-	Port uint16
-
-	// User is the SSH username.
-	User string
-
-	// KeyPath is the path to the SSH private key.
-	KeyPath string
-
-	// Command is the command to execute in the VM.
-	// It will be wrapped: . /etc/sandbox-env && cd /workspace && exec <cmd>
-	Command []string
-
-	// Stdin is the input stream (typically os.Stdin).
-	Stdin *os.File
-
-	// Stdout is the output stream (typically os.Stdout).
-	Stdout *os.File
-
-	// Stderr is the error stream (typically os.Stderr).
-	Stderr *os.File
-}
-
-// TerminalSession manages interactive PTY sessions over SSH.
-type TerminalSession interface {
-	// Run starts an interactive terminal session with the given options.
-	// It blocks until the remote command exits and returns its exit code as an error.
-	Run(ctx context.Context, opts SessionOpts) error
-}
+// Ensure InteractiveSession implements session.TerminalSession at compile time.
+var _ session.TerminalSession = (*InteractiveSession)(nil)
 
 // InteractiveSession implements TerminalSession with PTY forwarding.
 type InteractiveSession struct {
@@ -76,7 +46,7 @@ func (e *ExitError) Error() string {
 
 // Run establishes an SSH connection, requests a PTY, and runs the command
 // interactively with full terminal forwarding.
-func (s *InteractiveSession) Run(ctx context.Context, opts SessionOpts) error {
+func (s *InteractiveSession) Run(ctx context.Context, opts session.SessionOpts) error {
 	keyData, err := os.ReadFile(opts.KeyPath)
 	if err != nil {
 		return fmt.Errorf("reading ssh key: %w", err)
@@ -207,9 +177,6 @@ func buildCommand(command []string) string {
 	parts = append(parts, "exec "+strings.Join(command, " "))
 	return strings.Join(parts, " && ")
 }
-
-// Ensure InteractiveSession implements TerminalSession.
-var _ TerminalSession = (*InteractiveSession)(nil)
 
 // Ensure io interfaces are satisfied (compile-time check).
 var (

@@ -11,15 +11,11 @@ import (
 
 	"github.com/stacklok/sandbox-agent/internal/domain/snapshot"
 	"github.com/stacklok/sandbox-agent/internal/infra/diff"
-	"github.com/stacklok/sandbox-agent/internal/infra/workspace"
+	infraws "github.com/stacklok/sandbox-agent/internal/infra/workspace"
 )
 
-// Flusher copies accepted changes from the snapshot back to the original
-// workspace.
-type Flusher interface {
-	// Flush applies accepted changes from snapshotDir to originalDir.
-	Flush(originalDir, snapshotDir string, accepted []snapshot.FileChange) error
-}
+// Ensure FSFlusher implements snapshot.Flusher at compile time.
+var _ snapshot.Flusher = (*FSFlusher)(nil)
 
 // FSFlusher implements Flusher using filesystem operations.
 type FSFlusher struct{}
@@ -39,7 +35,7 @@ func (f *FSFlusher) Flush(originalDir, snapshotDir string, accepted []snapshot.F
 		targetPath := filepath.Join(originalDir, ch.RelPath)
 
 		// Validate target path stays within original workspace bounds.
-		if err := workspace.ValidateInBounds(originalDir, targetPath); err != nil {
+		if err := infraws.ValidateInBounds(originalDir, targetPath); err != nil {
 			return fmt.Errorf("target path traversal rejected for %s: %w", ch.RelPath, err)
 		}
 
@@ -48,7 +44,7 @@ func (f *FSFlusher) Flush(originalDir, snapshotDir string, accepted []snapshot.F
 			snapPath := filepath.Join(snapshotDir, ch.RelPath)
 
 			// Validate source path stays within snapshot bounds.
-			if err := workspace.ValidateInBounds(snapshotDir, snapPath); err != nil {
+			if err := infraws.ValidateInBounds(snapshotDir, snapPath); err != nil {
 				return fmt.Errorf("snapshot path traversal rejected for %s: %w", ch.RelPath, err)
 			}
 

@@ -58,7 +58,7 @@ func LoadGitignorePatterns(workspacePath string, logger *slog.Logger) ([]string,
 // NewDiffMatcher creates a Matcher that combines the snapshot exclude config
 // with additional gitignore patterns. Used for diff computation where gitignored
 // files should be skipped.
-func NewDiffMatcher(cfg snapshot.ExcludeConfig, gitignorePatterns []string) Matcher {
+func NewDiffMatcher(cfg snapshot.ExcludeConfig, gitignorePatterns []string) snapshot.Matcher {
 	var userAndPerf []string
 	userAndPerf = append(userAndPerf, cfg.PerformancePatterns...)
 	userAndPerf = append(userAndPerf, cfg.FilePatterns...)
@@ -116,7 +116,7 @@ func readIgnoreFile(path string, securityPatterns []string, logger *slog.Logger)
 }
 
 // NewMatcherFromConfig creates a two-tier Matcher from an ExcludeConfig.
-func NewMatcherFromConfig(cfg snapshot.ExcludeConfig) Matcher {
+func NewMatcherFromConfig(cfg snapshot.ExcludeConfig) snapshot.Matcher {
 	// User-overridable tier: performance + file + CLI patterns.
 	var userAndPerf []string
 	userAndPerf = append(userAndPerf, cfg.PerformancePatterns...)

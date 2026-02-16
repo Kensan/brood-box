@@ -15,21 +15,20 @@ import (
 
 	"github.com/stacklok/sandbox-agent/internal/domain/agent"
 	"github.com/stacklok/sandbox-agent/internal/domain/config"
+	"github.com/stacklok/sandbox-agent/internal/domain/session"
 	"github.com/stacklok/sandbox-agent/internal/domain/snapshot"
-	"github.com/stacklok/sandbox-agent/internal/infra/exclude"
-	infrassh "github.com/stacklok/sandbox-agent/internal/infra/ssh"
-	"github.com/stacklok/sandbox-agent/internal/infra/vm"
-	"github.com/stacklok/sandbox-agent/internal/infra/workspace"
+	domvm "github.com/stacklok/sandbox-agent/internal/domain/vm"
+	"github.com/stacklok/sandbox-agent/internal/domain/workspace"
 )
 
 // mockVMRunner records the config it was called with.
 type mockVMRunner struct {
-	startCfg vm.VMConfig
+	startCfg domvm.VMConfig
 	startErr error
 	vm       *mockVM
 }
 
-func (m *mockVMRunner) Start(_ context.Context, cfg vm.VMConfig) (vm.VM, error) {
+func (m *mockVMRunner) Start(_ context.Context, cfg domvm.VMConfig) (domvm.VM, error) {
 	m.startCfg = cfg
 	if m.startErr != nil {
 		return nil, m.startErr
@@ -55,11 +54,11 @@ func (m *mockVM) SSHKeyPath() string { return m.sshKeyPath }
 
 // mockTerminal records the session opts it was called with.
 type mockTerminal struct {
-	runOpts infrassh.SessionOpts
+	runOpts session.SessionOpts
 	runErr  error
 }
 
-func (m *mockTerminal) Run(_ context.Context, opts infrassh.SessionOpts) error {
+func (m *mockTerminal) Run(_ context.Context, opts session.SessionOpts) error {
 	m.runOpts = opts
 	return m.runErr
 }
@@ -99,7 +98,7 @@ type mockWorkspaceCloner struct {
 	snapshot     *workspace.Snapshot
 }
 
-func (m *mockWorkspaceCloner) CreateSnapshot(_ context.Context, _ string, _ exclude.Matcher) (*workspace.Snapshot, error) {
+func (m *mockWorkspaceCloner) CreateSnapshot(_ context.Context, _ string, _ snapshot.Matcher) (*workspace.Snapshot, error) {
 	m.createCalled = true
 	if m.createErr != nil {
 		return nil, m.createErr
@@ -113,7 +112,7 @@ type mockDiffer struct {
 	diffErr error
 }
 
-func (m *mockDiffer) Diff(_, _ string, _ exclude.Matcher) ([]snapshot.FileChange, error) {
+func (m *mockDiffer) Diff(_, _ string, _ snapshot.Matcher) ([]snapshot.FileChange, error) {
 	return m.changes, m.diffErr
 }
 

@@ -13,6 +13,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	domws "github.com/stacklok/sandbox-agent/internal/domain/workspace"
 )
 
 // testMatcher is a simple matcher for testing.
@@ -199,7 +201,7 @@ func TestSnapshot_Cleanup(t *testing.T) {
 	snapDir := filepath.Join(tmpDir, "snap")
 	require.NoError(t, os.MkdirAll(snapDir, 0o755))
 
-	snap := &Snapshot{SnapshotPath: snapDir}
+	snap := &domws.Snapshot{SnapshotPath: snapDir}
 	require.NoError(t, snap.Cleanup())
 
 	_, err := os.Stat(snapDir)

@@ -16,12 +16,11 @@ import (
 
 	"github.com/stacklok/sandbox-agent/internal/domain/agent"
 	"github.com/stacklok/sandbox-agent/internal/domain/config"
-	"github.com/stacklok/sandbox-agent/internal/infra/diff"
+	"github.com/stacklok/sandbox-agent/internal/domain/session"
+	"github.com/stacklok/sandbox-agent/internal/domain/snapshot"
+	domvm "github.com/stacklok/sandbox-agent/internal/domain/vm"
+	"github.com/stacklok/sandbox-agent/internal/domain/workspace"
 	"github.com/stacklok/sandbox-agent/internal/infra/exclude"
-	"github.com/stacklok/sandbox-agent/internal/infra/review"
-	infrassh "github.com/stacklok/sandbox-agent/internal/infra/ssh"
-	"github.com/stacklok/sandbox-agent/internal/infra/vm"
-	"github.com/stacklok/sandbox-agent/internal/infra/workspace"
 )
 
 // RunOpts holds runtime options for a sandbox execution.
@@ -51,17 +50,17 @@ type RunOpts struct {
 // SandboxDeps holds all dependencies for SandboxRunner.
 type SandboxDeps struct {
 	Registry    agent.Registry
-	VMRunner    vm.VMRunner
-	Terminal    infrassh.TerminalSession
+	VMRunner    domvm.VMRunner
+	Terminal    session.TerminalSession
 	Config      *config.Config
 	EnvProvider agent.EnvProvider
 	Logger      *slog.Logger
 
 	// Snapshot isolation dependencies (nil = disabled).
 	WorkspaceCloner workspace.WorkspaceCloner
-	Reviewer        review.Reviewer
-	Flusher         review.Flusher
-	Differ          diff.Differ
+	Reviewer        snapshot.Reviewer
+	Flusher         snapshot.Flusher
+	Differ          snapshot.Differ
 
 	// Stdin, Stdout, Stderr are the terminal file descriptors for the
 	// interactive SSH session. These must be real *os.File values (not
@@ -76,15 +75,15 @@ type SandboxDeps struct {
 // resolve agent, load config, collect env, start VM, run terminal, stop VM.
 type SandboxRunner struct {
 	registry        agent.Registry
-	vmRunner        vm.VMRunner
-	terminal        infrassh.TerminalSession
+	vmRunner        domvm.VMRunner
+	terminal        session.TerminalSession
 	config          *config.Config
 	envProvider     agent.EnvProvider
 	logger          *slog.Logger
 	workspaceCloner workspace.WorkspaceCloner
-	reviewer        review.Reviewer
-	flusher         review.Flusher
-	differ          diff.Differ
+	reviewer        snapshot.Reviewer
+	flusher         snapshot.Flusher
+	differ          snapshot.Differ
 	stdin           *os.File
 	stdout          *os.File
 	stderr          *os.File
@@ -163,7 +162,7 @@ func (s *SandboxRunner) Run(ctx context.Context, agentName string, opts RunOpts)
 	// 4. Set up workspace path (possibly with snapshot isolation).
 	workspacePath := opts.Workspace
 	var snap *workspace.Snapshot
-	var diffMatcher exclude.Matcher
+	var diffMatcher snapshot.Matcher
 
 	if opts.ReviewEnabled && s.workspaceCloner != nil {
 		s.logger.Info("creating workspace snapshot for review isolation")
@@ -205,7 +204,7 @@ func (s *SandboxRunner) Run(ctx context.Context, agentName string, opts RunOpts)
 	}
 
 	// 5. Start VM with (possibly overridden) workspace path.
-	vmCfg := vm.VMConfig{
+	vmCfg := domvm.VMConfig{
 		Name:          "sandbox-" + ag.Name,
 		Image:         ag.Image,
 		CPUs:          ag.DefaultCPUs,
@@ -221,7 +220,7 @@ func (s *SandboxRunner) Run(ctx context.Context, agentName string, opts RunOpts)
 	}
 
 	// 6. Run interactive terminal session.
-	sessionOpts := infrassh.SessionOpts{
+	sessionOpts := session.SessionOpts{
 		Host:    "127.0.0.1",
 		Port:    sandboxVM.SSHPort(),
 		User:    "sandbox",
@@ -284,7 +283,7 @@ func (s *SandboxRunner) Run(ctx context.Context, agentName string, opts RunOpts)
 }
 
 // runReview performs the diff → review → flush sequence after the VM is stopped.
-func (s *SandboxRunner) runReview(snap *workspace.Snapshot, matcher exclude.Matcher) error {
+func (s *SandboxRunner) runReview(snap *workspace.Snapshot, matcher snapshot.Matcher) error {
 	s.logger.Info("computing workspace diff")
 	changes, err := s.differ.Diff(snap.OriginalPath, snap.SnapshotPath, matcher)
 	if err != nil {

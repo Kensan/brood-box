@@ -15,11 +15,8 @@ import (
 	"github.com/stacklok/sandbox-agent/internal/domain/snapshot"
 )
 
-// Reviewer presents changes for interactive review.
-type Reviewer interface {
-	// Review shows the user all changes and lets them accept/reject each one.
-	Review(changes []snapshot.FileChange) (snapshot.ReviewResult, error)
-}
+// Ensure InteractiveReviewer implements snapshot.Reviewer at compile time.
+var _ snapshot.Reviewer = (*InteractiveReviewer)(nil)
 
 // InteractiveReviewer implements Reviewer with terminal I/O.
 type InteractiveReviewer struct {

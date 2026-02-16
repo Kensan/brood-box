@@ -20,16 +20,10 @@ import (
 	"github.com/sergi/go-diff/diffmatchpatch"
 
 	"github.com/stacklok/sandbox-agent/internal/domain/snapshot"
-	"github.com/stacklok/sandbox-agent/internal/infra/exclude"
 )
 
-// Differ computes the differences between an original workspace and its snapshot.
-type Differ interface {
-	// Diff returns the list of file changes between originalDir and snapshotDir.
-	// The matcher is used to skip excluded files (which shouldn't appear in the
-	// snapshot but we check defensively).
-	Diff(originalDir, snapshotDir string, matcher exclude.Matcher) ([]snapshot.FileChange, error)
-}
+// Ensure FSDiffer implements snapshot.Differ at compile time.
+var _ snapshot.Differ = (*FSDiffer)(nil)
 
 // FSDiffer implements Differ by walking both directories and comparing SHA-256 hashes.
 type FSDiffer struct{}
@@ -46,7 +40,7 @@ type fileEntry struct {
 }
 
 // Diff walks both directories and produces a sorted list of FileChange.
-func (d *FSDiffer) Diff(originalDir, snapshotDir string, matcher exclude.Matcher) ([]snapshot.FileChange, error) {
+func (d *FSDiffer) Diff(originalDir, snapshotDir string, matcher snapshot.Matcher) ([]snapshot.FileChange, error) {
 	origIndex, err := buildIndex(originalDir, matcher)
 	if err != nil {
 		return nil, fmt.Errorf("indexing original directory: %w", err)
@@ -123,7 +117,7 @@ var internalFiles = map[string]bool{
 // buildIndex walks a directory and builds a map of relPath -> fileEntry.
 // If matcher is non-nil, excluded paths are skipped. Internal snapshot
 // metadata files are always skipped.
-func buildIndex(root string, matcher exclude.Matcher) (map[string]fileEntry, error) {
+func buildIndex(root string, matcher snapshot.Matcher) (map[string]fileEntry, error) {
 	index := make(map[string]fileEntry)
 
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {

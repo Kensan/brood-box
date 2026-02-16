@@ -7,13 +7,12 @@ package exclude
 
 import (
 	ignore "github.com/sabhiram/go-gitignore"
+
+	"github.com/stacklok/sandbox-agent/internal/domain/snapshot"
 )
 
-// Matcher decides whether a relative path should be excluded from the snapshot.
-type Matcher interface {
-	// Match returns true if the given relative path should be excluded.
-	Match(relPath string) bool
-}
+// Ensure tieredMatcher implements snapshot.Matcher at compile time.
+var _ snapshot.Matcher = (*tieredMatcher)(nil)
 
 // tieredMatcher implements two-tier matching: user-overridable performance
 // patterns and non-overridable security patterns.
@@ -34,7 +33,7 @@ type tieredMatcher struct {
 //
 // securityPatterns: non-overridable built-in patterns. If a security pattern
 // matches, the file is excluded regardless of any user negation.
-func NewMatcher(userAndPerfPatterns, securityPatterns []string) Matcher {
+func NewMatcher(userAndPerfPatterns, securityPatterns []string) snapshot.Matcher {
 	return &tieredMatcher{
 		userAndPerf: ignore.CompileIgnoreLines(userAndPerfPatterns...),
 		security:    ignore.CompileIgnoreLines(securityPatterns...),
