@@ -61,7 +61,7 @@ func (r *InteractiveReviewer) Review(changes []snapshot.FileChange) (snapshot.Re
 		switch decision {
 		case snapshot.Accept:
 			result.Accepted = append(result.Accepted, ch)
-		case snapshot.Reject, snapshot.Skip:
+		case snapshot.Reject:
 			result.Rejected = append(result.Rejected, ch)
 		}
 	}
@@ -75,23 +75,21 @@ func (r *InteractiveReviewer) Review(changes []snapshot.FileChange) (snapshot.Re
 // prompt asks the user for a decision on a single file change.
 func (r *InteractiveReviewer) prompt(scanner *bufio.Scanner, relPath string) snapshot.ReviewDecision {
 	for {
-		_, _ = fmt.Fprintf(r.out, "Apply %s? [y]es / [n]o / [s]kip: ", relPath)
+		_, _ = fmt.Fprintf(r.out, "Apply %s? [y]es / [n]o: ", relPath)
 
 		if !scanner.Scan() {
-			// EOF — treat as skip.
-			return snapshot.Skip
+			// EOF — treat as reject.
+			return snapshot.Reject
 		}
 
 		input := strings.TrimSpace(strings.ToLower(scanner.Text()))
 		switch input {
 		case "y", "yes":
 			return snapshot.Accept
-		case "n", "no":
+		case "n", "no", "":
 			return snapshot.Reject
-		case "s", "skip", "":
-			return snapshot.Skip
 		default:
-			_, _ = fmt.Fprintf(r.out, "Invalid input. Please enter y, n, or s.\n")
+			_, _ = fmt.Fprintf(r.out, "Invalid input. Please enter y or n.\n")
 		}
 	}
 }

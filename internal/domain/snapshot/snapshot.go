@@ -59,8 +59,6 @@ const (
 	Accept ReviewDecision = iota
 	// Reject means the change should be discarded.
 	Reject
-	// Skip is treated as Reject but indicates the user deferred the decision.
-	Skip
 )
 
 // ReviewResult holds the categorized results of an interactive review session.

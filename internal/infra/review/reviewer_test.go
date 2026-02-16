@@ -48,14 +48,15 @@ func TestInteractiveReviewer_RejectAll(t *testing.T) {
 	assert.Len(t, result.Rejected, 2)
 }
 
-func TestInteractiveReviewer_SkipTreatedAsReject(t *testing.T) {
+func TestInteractiveReviewer_EmptyInputRejects(t *testing.T) {
 	t.Parallel()
 
 	changes := []snapshot.FileChange{
 		{RelPath: "file1.go", Kind: snapshot.Modified},
 	}
 
-	input := "s\n"
+	// Just pressing Enter (empty input) defaults to reject.
+	input := "\n"
 	r := NewInteractiveReviewer(strings.NewReader(input), &bytes.Buffer{})
 
 	result, err := r.Review(changes)
@@ -70,10 +71,10 @@ func TestInteractiveReviewer_MixedDecisions(t *testing.T) {
 	changes := []snapshot.FileChange{
 		{RelPath: "accept.go", Kind: snapshot.Modified},
 		{RelPath: "reject.go", Kind: snapshot.Added},
-		{RelPath: "skip.go", Kind: snapshot.Deleted},
+		{RelPath: "also-reject.go", Kind: snapshot.Deleted},
 	}
 
-	input := "yes\nno\nskip\n"
+	input := "yes\nno\nn\n"
 	r := NewInteractiveReviewer(strings.NewReader(input), &bytes.Buffer{})
 
 	result, err := r.Review(changes)
