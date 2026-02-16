@@ -16,10 +16,10 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	"github.com/stacklok/sandbox-agent/internal/guest/env"
-	"github.com/stacklok/sandbox-agent/internal/guest/mount"
-	"github.com/stacklok/sandbox-agent/internal/guest/network"
-	"github.com/stacklok/sandbox-agent/internal/guest/sshd"
+	"github.com/stacklok/apiary/internal/guest/env"
+	"github.com/stacklok/apiary/internal/guest/mount"
+	"github.com/stacklok/apiary/internal/guest/network"
+	"github.com/stacklok/apiary/internal/guest/sshd"
 )
 
 // Run executes the full guest boot sequence and returns a shutdown function

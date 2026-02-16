@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2025 Stacklok, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-// Package main is the entrypoint for the sandbox-agent CLI.
+// Package main is the entrypoint for the apiary CLI.
 package main
 
 import (
@@ -17,32 +17,32 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/stacklok/sandbox-agent/internal/app"
-	"github.com/stacklok/sandbox-agent/internal/domain/agent"
-	domainconfig "github.com/stacklok/sandbox-agent/internal/domain/config"
-	"github.com/stacklok/sandbox-agent/internal/domain/egress"
-	"github.com/stacklok/sandbox-agent/internal/domain/progress"
-	"github.com/stacklok/sandbox-agent/internal/domain/snapshot"
-	infraagent "github.com/stacklok/sandbox-agent/internal/infra/agent"
-	infraconfig "github.com/stacklok/sandbox-agent/internal/infra/config"
-	"github.com/stacklok/sandbox-agent/internal/infra/diff"
-	"github.com/stacklok/sandbox-agent/internal/infra/exclude"
-	infralogging "github.com/stacklok/sandbox-agent/internal/infra/logging"
-	inframcp "github.com/stacklok/sandbox-agent/internal/infra/mcp"
-	infraprogress "github.com/stacklok/sandbox-agent/internal/infra/progress"
-	"github.com/stacklok/sandbox-agent/internal/infra/review"
-	infrassh "github.com/stacklok/sandbox-agent/internal/infra/ssh"
-	infraterminal "github.com/stacklok/sandbox-agent/internal/infra/terminal"
-	infravm "github.com/stacklok/sandbox-agent/internal/infra/vm"
-	infraws "github.com/stacklok/sandbox-agent/internal/infra/workspace"
-	"github.com/stacklok/sandbox-agent/internal/version"
+	"github.com/stacklok/apiary/internal/app"
+	"github.com/stacklok/apiary/internal/domain/agent"
+	domainconfig "github.com/stacklok/apiary/internal/domain/config"
+	"github.com/stacklok/apiary/internal/domain/egress"
+	"github.com/stacklok/apiary/internal/domain/progress"
+	"github.com/stacklok/apiary/internal/domain/snapshot"
+	infraagent "github.com/stacklok/apiary/internal/infra/agent"
+	infraconfig "github.com/stacklok/apiary/internal/infra/config"
+	"github.com/stacklok/apiary/internal/infra/diff"
+	"github.com/stacklok/apiary/internal/infra/exclude"
+	infralogging "github.com/stacklok/apiary/internal/infra/logging"
+	inframcp "github.com/stacklok/apiary/internal/infra/mcp"
+	infraprogress "github.com/stacklok/apiary/internal/infra/progress"
+	"github.com/stacklok/apiary/internal/infra/review"
+	infrassh "github.com/stacklok/apiary/internal/infra/ssh"
+	infraterminal "github.com/stacklok/apiary/internal/infra/terminal"
+	infravm "github.com/stacklok/apiary/internal/infra/vm"
+	infraws "github.com/stacklok/apiary/internal/infra/workspace"
+	"github.com/stacklok/apiary/internal/version"
 )
 
-// defaultLogDir is the directory for sandbox-agent log files.
-const defaultLogDir = ".config/sandbox-agent/logs"
+// defaultLogDir is the directory for apiary log files.
+const defaultLogDir = ".config/apiary/logs"
 
 // defaultLogFile is the log file name within the log directory.
-const defaultLogFile = "sandbox-agent.log"
+const defaultLogFile = "apiary.log"
 
 // maxLogSize is the maximum log file size before truncation (10 MiB).
 const maxLogSize = 10 * 1024 * 1024
@@ -76,9 +76,9 @@ func rootCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "sandbox-agent <agent-name>",
+		Use:   "apiary <agent-name>",
 		Short: "Run coding agents in hardware-isolated sandbox VMs",
-		Long: `sandbox-agent boots a microVM, mounts your workspace, forwards secrets,
+		Long: `apiary boots a microVM, mounts your workspace, forwards secrets,
 and drops into an interactive terminal session with a coding agent.
 
 By default, the workspace is mounted as a COW snapshot. After the agent
@@ -88,15 +88,15 @@ Use --no-review to disable snapshot isolation and mount the workspace directly.
 Supported agents: claude-code, codex, opencode
 
 Example:
-  sandbox-agent claude-code
-  sandbox-agent codex --cpus 4 --memory 4096
-  sandbox-agent opencode --workspace /path/to/project
-  sandbox-agent claude-code --no-review
-  sandbox-agent claude-code --exclude "*.log" --exclude "tmp/"
-  sandbox-agent claude-code --egress-profile locked
-  sandbox-agent claude-code --allow-host "custom-api.example.com:443"
-  sandbox-agent claude-code --mcp
-  sandbox-agent claude-code --mcp --mcp-group "coding-tools"`,
+  apiary claude-code
+  apiary codex --cpus 4 --memory 4096
+  apiary opencode --workspace /path/to/project
+  apiary claude-code --no-review
+  apiary claude-code --exclude "*.log" --exclude "tmp/"
+  apiary claude-code --egress-profile locked
+  apiary claude-code --allow-host "custom-api.example.com:443"
+  apiary claude-code --mcp
+  apiary claude-code --mcp --mcp-group "coding-tools"`,
 		Args:    cobra.ExactArgs(1),
 		Version: fmt.Sprintf("%s (%s)", version.Version, version.Commit),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -127,12 +127,12 @@ Example:
 	cmd.Flags().Uint32Var(&memory, "memory", 0, "RAM in MiB (0 = agent default)")
 	cmd.Flags().StringVar(&wsPath, "workspace", "", "Workspace directory to mount (default: current directory)")
 	cmd.Flags().Uint16Var(&sshPort, "ssh-port", 0, "Host SSH port (0 = auto-pick)")
-	cmd.Flags().StringVar(&cfgPath, "config", "", "Config file path (default: ~/.config/sandbox-agent/config.yaml)")
+	cmd.Flags().StringVar(&cfgPath, "config", "", "Config file path (default: ~/.config/apiary/config.yaml)")
 	cmd.Flags().StringVar(&image, "image", "", "Override OCI image reference")
 	cmd.Flags().BoolVar(&debug, "debug", false, "Enable debug logging (shows full slog output on stderr)")
 	cmd.Flags().BoolVar(&noReview, "no-review", false, "Disable workspace snapshot isolation (mount workspace directly)")
 	cmd.Flags().StringSliceVar(&excludes, "exclude", nil, "Additional exclude patterns for workspace snapshot (repeatable)")
-	cmd.Flags().StringVar(&logFile, "log-file", "", "Override log file path (default: ~/.config/sandbox-agent/logs/sandbox-agent.log)")
+	cmd.Flags().StringVar(&logFile, "log-file", "", "Override log file path (default: ~/.config/apiary/logs/apiary.log)")
 	cmd.Flags().StringVar(&egressProfile, "egress-profile", "", "Egress restriction level: permissive, standard, locked (default: agent's built-in default)")
 	cmd.Flags().StringSliceVar(&allowHosts, "allow-host", nil, "Additional allowed egress host, format: hostname[:port] (repeatable)")
 	cmd.Flags().BoolVar(&mcpEnabled, "mcp", false, "Enable MCP tool proxy (discovers servers from ToolHive)")

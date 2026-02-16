@@ -19,7 +19,7 @@ import (
 
 	"github.com/sergi/go-diff/diffmatchpatch"
 
-	"github.com/stacklok/sandbox-agent/internal/domain/snapshot"
+	"github.com/stacklok/apiary/internal/domain/snapshot"
 )
 
 // Ensure FSDiffer implements snapshot.Differ at compile time.

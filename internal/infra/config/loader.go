@@ -13,7 +13,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	domainconfig "github.com/stacklok/sandbox-agent/internal/domain/config"
+	domainconfig "github.com/stacklok/apiary/internal/domain/config"
 )
 
 // Loader implements ConfigLoader by reading a YAML file from disk.
@@ -22,7 +22,7 @@ type Loader struct {
 }
 
 // NewLoader creates a Loader that reads from the given path.
-// If path is empty, it defaults to ~/.config/sandbox-agent/config.yaml
+// If path is empty, it defaults to ~/.config/apiary/config.yaml
 // (respecting XDG_CONFIG_HOME).
 func NewLoader(path string) *Loader {
 	if path == "" {
@@ -84,5 +84,5 @@ func defaultConfigPath() string {
 		}
 		configHome = filepath.Join(home, ".config")
 	}
-	return filepath.Join(configHome, "sandbox-agent", "config.yaml")
+	return filepath.Join(configHome, "apiary", "config.yaml")
 }

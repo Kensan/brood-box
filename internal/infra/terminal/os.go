@@ -15,7 +15,7 @@ import (
 
 	"golang.org/x/term"
 
-	"github.com/stacklok/sandbox-agent/internal/domain/session"
+	"github.com/stacklok/apiary/internal/domain/session"
 )
 
 // Ensure OSTerminal implements session.Terminal at compile time.

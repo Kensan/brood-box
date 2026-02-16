@@ -8,8 +8,8 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/stacklok/sandbox-agent/internal/domain/agent"
-	"github.com/stacklok/sandbox-agent/internal/domain/egress"
+	"github.com/stacklok/apiary/internal/domain/agent"
+	"github.com/stacklok/apiary/internal/domain/egress"
 )
 
 // VMConfig holds the parameters needed to start a sandbox VM.

@@ -1,9 +1,9 @@
 # SPDX-FileCopyrightText: Copyright 2025 Stacklok, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-# Codex guest image for sandbox-agent.
+# Codex guest image for apiary.
 # Installs the Codex static binary (musl-linked) on top of the base image.
-FROM ghcr.io/stacklok/sandbox-agent/base:latest
+FROM ghcr.io/stacklok/apiary/base:latest
 
 # Install Codex static binary from GitHub Releases
 ARG TARGETARCH

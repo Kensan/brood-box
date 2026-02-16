@@ -3,7 +3,7 @@
 
 package snapshot
 
-import "github.com/stacklok/sandbox-agent/internal/domain/config"
+import "github.com/stacklok/apiary/internal/domain/config"
 
 // ExcludeConfig holds all exclude patterns organized by source.
 type ExcludeConfig struct {
@@ -12,10 +12,10 @@ type ExcludeConfig struct {
 	SecurityPatterns []string
 
 	// PerformancePatterns are built-in patterns that can be
-	// overridden via negation in .sandboxignore.
+	// overridden via negation in .apiaryignore.
 	PerformancePatterns []string
 
-	// FilePatterns are user patterns from .sandboxignore.
+	// FilePatterns are user patterns from .apiaryignore.
 	FilePatterns []string
 
 	// CLIPatterns are patterns provided via --exclude flags.
@@ -79,13 +79,13 @@ func DefaultSecurityPatterns() []string {
 		// Encryption keys
 		"age-key.txt",
 		"*.age",
-		// Sandbox agent config (should not be modified by agents)
+		// Apiary config (should not be modified by agents)
 		config.LocalConfigFile,
 	}
 }
 
 // DefaultPerformancePatterns returns built-in performance patterns
-// that CAN be overridden via negation in .sandboxignore.
+// that CAN be overridden via negation in .apiaryignore.
 func DefaultPerformancePatterns() []string {
 	return []string{
 		"node_modules/",

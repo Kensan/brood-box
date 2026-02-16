@@ -8,7 +8,7 @@ package exclude
 import (
 	ignore "github.com/sabhiram/go-gitignore"
 
-	"github.com/stacklok/sandbox-agent/internal/domain/snapshot"
+	"github.com/stacklok/apiary/internal/domain/snapshot"
 )
 
 // Ensure tieredMatcher implements snapshot.Matcher at compile time.
@@ -28,7 +28,7 @@ type tieredMatcher struct {
 
 // NewMatcher creates a two-tier Matcher.
 //
-// userAndPerfPatterns: performance defaults + .sandboxignore + CLI patterns.
+// userAndPerfPatterns: performance defaults + .apiaryignore + CLI patterns.
 // User negation patterns (e.g. !node_modules/) can override performance patterns.
 //
 // securityPatterns: non-overridable built-in patterns. If a security pattern

@@ -3,7 +3,7 @@
 
 //go:build linux
 
-// sandbox-init is the PID 1 init process for sandbox-agent guest VMs.
+// apiary-init is the PID 1 init process for apiary guest VMs.
 // It mounts filesystems, configures networking, and starts an embedded
 // SSH server — replacing the shell init script and external dependencies
 // (dropbear, iproute2, mount).
@@ -17,8 +17,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/stacklok/sandbox-agent/internal/guest/boot"
-	"github.com/stacklok/sandbox-agent/internal/guest/reaper"
+	"github.com/stacklok/apiary/internal/guest/boot"
+	"github.com/stacklok/apiary/internal/guest/reaper"
 )
 
 func main() {

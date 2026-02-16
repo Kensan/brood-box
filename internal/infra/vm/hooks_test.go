@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/stacklok/sandbox-agent/internal/infra/vm/initbin"
+	"github.com/stacklok/apiary/internal/infra/vm/initbin"
 )
 
 func TestInjectInitBinaryWritesCorrectContent(t *testing.T) {
@@ -22,7 +22,7 @@ func TestInjectInitBinaryWritesCorrectContent(t *testing.T) {
 	err := hook(rootfs, nil)
 	require.NoError(t, err)
 
-	initPath := filepath.Join(rootfs, "sandbox-init")
+	initPath := filepath.Join(rootfs, "apiary-init")
 	data, err := os.ReadFile(initPath)
 	require.NoError(t, err)
 	assert.Equal(t, initbin.Binary, data)
@@ -36,7 +36,7 @@ func TestInjectInitBinaryPermissions(t *testing.T) {
 	err := hook(rootfs, nil)
 	require.NoError(t, err)
 
-	initPath := filepath.Join(rootfs, "sandbox-init")
+	initPath := filepath.Join(rootfs, "apiary-init")
 	info, err := os.Stat(initPath)
 	require.NoError(t, err)
 	assert.Equal(t, os.FileMode(0o755), info.Mode().Perm())

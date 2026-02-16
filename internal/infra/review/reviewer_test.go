@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/stacklok/sandbox-agent/internal/domain/snapshot"
+	"github.com/stacklok/apiary/internal/domain/snapshot"
 )
 
 func TestInteractiveReviewer_AcceptAll(t *testing.T) {

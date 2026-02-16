@@ -1,17 +1,17 @@
 // SPDX-FileCopyrightText: Copyright 2025 Stacklok, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-// Package config defines configuration types for sandbox-agent.
+// Package config defines configuration types for apiary.
 // All types are pure data with no I/O dependencies.
 package config
 
 import (
-	"github.com/stacklok/sandbox-agent/internal/domain/agent"
-	"github.com/stacklok/sandbox-agent/internal/domain/egress"
+	"github.com/stacklok/apiary/internal/domain/agent"
+	"github.com/stacklok/apiary/internal/domain/egress"
 )
 
 // LocalConfigFile is the per-workspace config file name.
-const LocalConfigFile = ".sandbox-agent.yaml"
+const LocalConfigFile = ".apiary.yaml"
 
 // Config is the top-level user configuration.
 type Config struct {

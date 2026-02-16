@@ -1,6 +1,6 @@
 # User Guide
 
-sandbox-agent runs coding agents (Claude Code, Codex, OpenCode) inside
+apiary runs coding agents (Claude Code, Codex, OpenCode) inside
 hardware-isolated microVMs powered by [libkrun](https://github.com/containers/libkrun).
 Your workspace is mounted into the VM, API keys are forwarded automatically,
 and you get a live interactive terminal session.
@@ -9,20 +9,20 @@ and you get a live interactive terminal session.
 
 ```bash
 # Run Claude Code in the current directory
-sandbox-agent claude-code
+apiary claude-code
 
 # Run Codex with more resources
-sandbox-agent codex --cpus 4 --memory 4096
+apiary codex --cpus 4 --memory 4096
 
 # Run OpenCode on a specific project
-sandbox-agent opencode --workspace /path/to/project
+apiary opencode --workspace /path/to/project
 ```
 
 ## Prerequisites
 
 - **Linux** with KVM support (`/dev/kvm` must be accessible)
 - **libkrun-devel** installed (for building propolis-runner)
-- **propolis** checked out at `../propolis` relative to sandbox-agent
+- **propolis** checked out at `../propolis` relative to apiary
 
 Verify KVM access:
 
@@ -36,20 +36,20 @@ ls -la /dev/kvm
 
 | Agent | Image | Command | Forwarded Env Vars |
 |-------|-------|---------|--------------------|
-| `claude-code` | `ghcr.io/stacklok/sandbox-agent/claude-code:latest` | `claude` | `ANTHROPIC_API_KEY`, `CLAUDE_*` |
-| `codex` | `ghcr.io/stacklok/sandbox-agent/codex:latest` | `codex` | `OPENAI_API_KEY`, `CODEX_*` |
-| `opencode` | `ghcr.io/stacklok/sandbox-agent/opencode:latest` | `opencode` | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `OPENCODE_*` |
+| `claude-code` | `ghcr.io/stacklok/apiary/claude-code:latest` | `claude` | `ANTHROPIC_API_KEY`, `CLAUDE_*` |
+| `codex` | `ghcr.io/stacklok/apiary/codex:latest` | `codex` | `OPENAI_API_KEY`, `CODEX_*` |
+| `opencode` | `ghcr.io/stacklok/apiary/opencode:latest` | `opencode` | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `OPENCODE_*` |
 
 List agents:
 
 ```bash
-sandbox-agent list
+apiary list
 ```
 
 ## CLI Reference
 
 ```
-sandbox-agent <agent-name> [flags]
+apiary <agent-name> [flags]
 ```
 
 ### Flags
@@ -60,7 +60,7 @@ sandbox-agent <agent-name> [flags]
 | `--memory` | Agent default (2048) | RAM in MiB |
 | `--workspace` | Current directory | Host directory mounted as `/workspace` |
 | `--ssh-port` | Auto-pick | Host port forwarded to guest SSH (port 22) |
-| `--config` | `~/.config/sandbox-agent/config.yaml` | Config file path |
+| `--config` | `~/.config/apiary/config.yaml` | Config file path |
 | `--image` | Agent default | Override the OCI image reference |
 | `--no-review` | `false` | Disable snapshot isolation, mount workspace directly |
 | `--exclude` | (none) | Additional gitignore-style exclude patterns (repeatable) |
@@ -77,8 +77,8 @@ sandbox-agent <agent-name> [flags]
 
 1. **Resolve agent** -- Looks up the agent name in the built-in registry
    (and any custom agents from your config file).
-2. **Load config** -- Reads `~/.config/sandbox-agent/config.yaml` and
-   per-workspace `.sandbox-agent.yaml`, merges overrides with built-in
+2. **Load config** -- Reads `~/.config/apiary/config.yaml` and
+   per-workspace `.apiary.yaml`, merges overrides with built-in
    agent defaults and CLI flags.
 3. **Collect environment** -- Matches your host environment variables against
    the agent's forwarding patterns (e.g., `ANTHROPIC_API_KEY`, `CLAUDE_*`)
@@ -104,7 +104,7 @@ sandbox-agent <agent-name> [flags]
 
 ## Configuration
 
-Create `~/.config/sandbox-agent/config.yaml` to customize defaults,
+Create `~/.config/apiary/config.yaml` to customize defaults,
 override built-in agents, or define custom agents.
 
 ```yaml
@@ -154,7 +154,7 @@ before the agent starts. Values are shell-escaped for safety.
 
 ## Workspace Snapshot Isolation
 
-By default, sandbox-agent creates a copy-on-write (COW) snapshot of your
+By default, apiary creates a copy-on-write (COW) snapshot of your
 workspace before the agent starts. The agent works on the snapshot, and
 after it finishes you review changes per-file before they touch your real
 workspace.
@@ -181,7 +181,7 @@ Pass `--no-review` to mount the workspace directly into the VM with no
 snapshot isolation:
 
 ```bash
-sandbox-agent claude-code --no-review
+apiary claude-code --no-review
 ```
 
 ### Exclude Patterns
@@ -190,21 +190,21 @@ Certain files are automatically excluded from the snapshot:
 
 **Security patterns** (non-overridable — always excluded):
 - `.env*`, `*.pem`, `*.key`, `.ssh/`, `.aws/`, `.gcp/`, `credentials.json`
-- `.sandbox-agent.yaml`, `.kube/config`, `.gnupg/`, and more
+- `.apiary.yaml`, `.kube/config`, `.gnupg/`, and more
 
-**Performance patterns** (overridable — can be negated in `.sandboxignore`):
+**Performance patterns** (overridable — can be negated in `.apiaryignore`):
 - `node_modules/`, `vendor/`, `.git/objects/`, `__pycache__/`, `target/`,
   `build/`, `dist/`, `.venv/`, `.tox/`
 
 Add extra patterns via the CLI:
 
 ```bash
-sandbox-agent claude-code --exclude "*.log" --exclude "tmp/"
+apiary claude-code --exclude "*.log" --exclude "tmp/"
 ```
 
-### `.sandboxignore`
+### `.apiaryignore`
 
-Create a `.sandboxignore` file in your workspace root (gitignore syntax)
+Create a `.apiaryignore` file in your workspace root (gitignore syntax)
 to exclude additional paths:
 
 ```gitignore
@@ -220,7 +220,7 @@ Security patterns cannot be negated — attempts are logged as warnings.
 
 ### Per-Workspace Config
 
-Create `.sandbox-agent.yaml` in your workspace root to set per-project
+Create `.apiary.yaml` in your workspace root to set per-project
 defaults:
 
 ```yaml
@@ -244,7 +244,7 @@ Note: `review.enabled` is **ignored** in per-workspace config for security
 
 ## Building Guest Images
 
-sandbox-agent runs agents inside OCI images that boot as microVMs. Pre-built
+apiary runs agents inside OCI images that boot as microVMs. Pre-built
 images are available from GHCR, but you can also build them locally.
 
 ### Prerequisites
@@ -261,10 +261,10 @@ This builds the base image first, then all three agent images in parallel:
 
 | Image | Contents |
 |-------|----------|
-| `ghcr.io/stacklok/sandbox-agent/base:latest` | Wolfi + sshd, bash, git, coreutils |
-| `ghcr.io/stacklok/sandbox-agent/claude-code:latest` | Base + Claude Code binary |
-| `ghcr.io/stacklok/sandbox-agent/codex:latest` | Base + Codex binary |
-| `ghcr.io/stacklok/sandbox-agent/opencode:latest` | Base + OpenCode binary |
+| `ghcr.io/stacklok/apiary/base:latest` | Wolfi + sshd, bash, git, coreutils |
+| `ghcr.io/stacklok/apiary/claude-code:latest` | Base + Claude Code binary |
+| `ghcr.io/stacklok/apiary/codex:latest` | Base + Codex binary |
+| `ghcr.io/stacklok/apiary/opencode:latest` | Base + OpenCode binary |
 
 ### Build Individual Images
 
@@ -290,7 +290,7 @@ task image-push
 ### "agent not found: <name>"
 
 The agent name doesn't match any built-in or custom agent. Run
-`sandbox-agent list` to see available agents. Custom agents need an
+`apiary list` to see available agents. Custom agents need an
 `image` field in the config file.
 
 ### VM fails to start
@@ -302,7 +302,7 @@ Check that:
 
 ### SSH connection refused
 
-The guest may still be booting. sandbox-agent waits for SSH automatically,
+The guest may still be booting. apiary waits for SSH automatically,
 but if the image's init system is slow, the timeout may be exceeded.
 Check the VM console log for errors.
 

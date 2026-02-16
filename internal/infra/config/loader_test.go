@@ -101,7 +101,7 @@ review:
     - "*.tmp"
 `
 	dir := t.TempDir()
-	path := filepath.Join(dir, ".sandbox-agent.yaml")
+	path := filepath.Join(dir, ".apiary.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
 
 	cfg, err := LoadFromPath(path)
@@ -116,7 +116,7 @@ func TestLoadFromPath_EmptyFile(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	path := filepath.Join(dir, ".sandbox-agent.yaml")
+	path := filepath.Join(dir, ".apiary.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(""), 0o644))
 
 	cfg, err := LoadFromPath(path)
@@ -129,7 +129,7 @@ func TestLoadFromPath_InvalidYAML(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	path := filepath.Join(dir, ".sandbox-agent.yaml")
+	path := filepath.Join(dir, ".apiary.yaml")
 	require.NoError(t, os.WriteFile(path, []byte("{{invalid yaml"), 0o644))
 
 	_, err := LoadFromPath(path)
@@ -140,6 +140,6 @@ func TestLoadFromPath_InvalidYAML(t *testing.T) {
 func TestLoader_DefaultPath(t *testing.T) {
 	t.Parallel()
 	loader := NewLoader("")
-	assert.Contains(t, loader.Path(), "sandbox-agent")
+	assert.Contains(t, loader.Path(), "apiary")
 	assert.Contains(t, loader.Path(), "config.yaml")
 }

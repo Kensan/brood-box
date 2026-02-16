@@ -1,9 +1,9 @@
 # SPDX-FileCopyrightText: Copyright 2025 Stacklok, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-# Claude Code guest image for sandbox-agent.
+# Claude Code guest image for apiary.
 # Installs the Claude Code native binary (Bun-based) on top of the base image.
-FROM ghcr.io/stacklok/sandbox-agent/base:latest
+FROM ghcr.io/stacklok/apiary/base:latest
 
 # Install Claude Code native binary.
 # The installer creates a symlink at /root/.local/bin/claude pointing to the

@@ -1,18 +1,18 @@
-# sandbox-agent
+# apiary
 
 CLI tool for running coding agents (Claude Code, Codex, OpenCode) inside hardware-isolated microVMs.
 Wraps the propolis framework with an opinionated CLI.
 
-Module: `github.com/stacklok/sandbox-agent`
+Module: `github.com/stacklok/apiary`
 
 ## Commands — ALWAYS use `task` (Taskfile.yaml)
 
 **IMPORTANT**: ALWAYS use `task <target>` for building, testing, linting, formatting, and running. NEVER invoke `go build`, `go test`, `golangci-lint`, `go fmt`, `goimports`, or `podman build` directly — the Taskfile wraps these with the correct flags, ldflags, env vars, and dependency ordering. Running raw commands will produce incorrect builds or miss steps.
 
 ```bash
-task build             # Build sandbox-agent (pure Go, no CGO)
-task build-init        # Cross-compile sandbox-init for guest VM
-task build-dev         # Build sandbox-agent + propolis-runner (requires libkrun-devel)
+task build             # Build apiary (pure Go, no CGO)
+task build-init        # Cross-compile apiary-init for guest VM
+task build-dev         # Build apiary + propolis-runner (requires libkrun-devel)
 task test              # go test -v -race ./...
 task test-coverage     # Run tests with coverage report
 task lint              # golangci-lint run ./...
@@ -62,10 +62,10 @@ This project follows DDD layered architecture with dependency injection **strict
 
 **Guest VM** (`internal/guest/`, Linux only — runs inside the microVM):
 - `internal/guest/` — Boot, mount, network, env, sshd, reaper packages
-- `cmd/sandbox-init/` — Guest PID 1 init binary (compiled Go)
+- `cmd/apiary-init/` — Guest PID 1 init binary (compiled Go)
 
 **CLI + Composition Root** (`cmd/`):
-- `cmd/sandbox-agent/main.go` — Composition root, wires dependencies, Cobra CLI
+- `cmd/apiary/main.go` — Composition root, wires dependencies, Cobra CLI
 - `internal/version/` — Version/commit info via ldflags
 
 ### DDD Rules (non-negotiable)
@@ -95,12 +95,12 @@ By default, the workspace is mounted as a COW snapshot. After the agent finishes
 
 - `--no-review` — Disable snapshot isolation, mount workspace directly
 - `--exclude "pattern"` — Additional gitignore-style exclude patterns (repeatable)
-- `.sandboxignore` — Per-workspace exclude file (gitignore syntax) in workspace root
-- `.sandbox-agent.yaml` — Per-workspace config file (merged into global config; `review.enabled` is **ignored** for security)
-- Security patterns (`.env*`, `*.pem`, `.ssh/`, `.sandbox-agent.yaml`, etc.) are **non-overridable** — cannot be negated
-- Performance patterns (`node_modules/`, `vendor/`, etc.) can be negated in `.sandboxignore`
+- `.apiaryignore` — Per-workspace exclude file (gitignore syntax) in workspace root
+- `.apiary.yaml` — Per-workspace config file (merged into global config; `review.enabled` is **ignored** for security)
+- Security patterns (`.env*`, `*.pem`, `.ssh/`, `.apiary.yaml`, etc.) are **non-overridable** — cannot be negated
+- Performance patterns (`node_modules/`, `vendor/`, etc.) can be negated in `.apiaryignore`
 
-Global config (`~/.config/sandbox-agent/config.yaml`):
+Global config (`~/.config/apiary/config.yaml`):
 ```yaml
 review:
   enabled: true
@@ -114,7 +114,7 @@ Execution order: create snapshot → start VM → terminal → stop VM → diff 
 ## Things That Will Bite You
 
 - **propolis is a local replace**: `go.mod` uses `replace github.com/stacklok/propolis => ../propolis`. The propolis checkout must be at `../propolis`.
-- **CGO boundary**: sandbox-agent itself is pure Go (`CGO_ENABLED=0`). Only propolis-runner needs CGO.
+- **CGO boundary**: apiary itself is pure Go (`CGO_ENABLED=0`). Only propolis-runner needs CGO.
 - **Domain purity**: `internal/domain/` must never import from `internal/infra/` or `internal/app/`. This is the most important architectural invariant — break it and you break the entire DDD foundation.
 - **Always use `task`**: Never run `go build`, `go test ./...`, `golangci-lint`, `go fmt`, or `goimports` directly. The Taskfile sets critical env vars and flags. Raw commands will silently produce wrong results.
 

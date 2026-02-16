@@ -14,7 +14,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	"github.com/stacklok/sandbox-agent/internal/domain/session"
+	"github.com/stacklok/apiary/internal/domain/session"
 )
 
 // Ensure InteractiveSession implements session.TerminalSession at compile time.

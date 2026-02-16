@@ -4,19 +4,19 @@
 version: '3'
 
 vars:
-  BINARY_NAME: sandbox-agent
-  IMAGE_REGISTRY: ghcr.io/stacklok/sandbox-agent
+  BINARY_NAME: apiary
+  IMAGE_REGISTRY: ghcr.io/stacklok/apiary
   VERSION:
     sh: git describe --tags --always --dirty 2>/dev/null || echo "dev"
   COMMIT:
     sh: git rev-parse --short HEAD 2>/dev/null || echo "unknown"
   LDFLAGS: >-
-    -X github.com/stacklok/sandbox-agent/internal/version.Version={{.VERSION}}
-    -X github.com/stacklok/sandbox-agent/internal/version.Commit={{.COMMIT}}
+    -X github.com/stacklok/apiary/internal/version.Version={{.VERSION}}
+    -X github.com/stacklok/apiary/internal/version.Commit={{.COMMIT}}
 
 # Quick reference:
-#   task build         → Build sandbox-agent (pure Go, no CGO)
-#   task build-dev     → Build sandbox-agent + propolis-runner
+#   task build         → Build apiary (pure Go, no CGO)
+#   task build-dev     → Build apiary + propolis-runner
 #   task test          → Run tests with race detector
 #   task lint          → Run linter
 #   task verify        → fmt + lint + test
@@ -30,7 +30,7 @@ tasks:
       - task --list
 
   build-init:
-    desc: Cross-compile sandbox-init binary for guest VM
+    desc: Cross-compile apiary-init binary for guest VM
     # GOARCH inherits from host — KVM guests always match host architecture.
     # Override with GOARCH=<arch> task build-init if cross-compiling.
     env:
@@ -38,21 +38,21 @@ tasks:
       GOOS: linux
     cmds:
       - mkdir -p internal/infra/vm/initbin
-      - go build -ldflags "-s -w" -o internal/infra/vm/initbin/sandbox-init ./cmd/sandbox-init
+      - go build -ldflags "-s -w" -o internal/infra/vm/initbin/apiary-init ./cmd/apiary-init
     sources:
-      - cmd/sandbox-init/**/*.go
+      - cmd/apiary-init/**/*.go
       - internal/guest/**/*.go
     generates:
-      - internal/infra/vm/initbin/sandbox-init
+      - internal/infra/vm/initbin/apiary-init
 
   build:
-    desc: Build sandbox-agent binary (pure Go, no CGO)
+    desc: Build apiary binary (pure Go, no CGO)
     deps: [build-init]
     env:
       CGO_ENABLED: "0"
     cmds:
       - mkdir -p bin
-      - go build -ldflags "{{.LDFLAGS}}" -o bin/{{.BINARY_NAME}} ./cmd/sandbox-agent
+      - go build -ldflags "{{.LDFLAGS}}" -o bin/{{.BINARY_NAME}} ./cmd/apiary
     sources:
       - ./**/*.go
       - go.mod
@@ -61,7 +61,7 @@ tasks:
       - bin/{{.BINARY_NAME}}
 
   build-dev:
-    desc: Build sandbox-agent + propolis-runner (requires libkrun-devel)
+    desc: Build apiary + propolis-runner (requires libkrun-devel)
     platforms: [linux]
     cmds:
       - task: build
@@ -109,7 +109,7 @@ tasks:
       - task: test
 
   run:
-    desc: Build and run sandbox-agent
+    desc: Build and run apiary
     cmds:
       - task: build
       - bin/{{.BINARY_NAME}} {{.CLI_ARGS}}
@@ -119,7 +119,7 @@ tasks:
     cmds:
       - rm -rf bin/
       - rm -f coverage.out coverage.html
-      - rm -f internal/infra/vm/initbin/sandbox-init
+      - rm -f internal/infra/vm/initbin/apiary-init
 
   # --- OCI guest images ---
 

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2025 Stacklok, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-module github.com/stacklok/sandbox-agent
+module github.com/stacklok/apiary
 
 go 1.25.7
 

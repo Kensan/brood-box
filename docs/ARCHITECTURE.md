@@ -1,13 +1,13 @@
 # Architecture
 
-sandbox-agent follows Domain-Driven Design (DDD) with strict layering
+apiary follows Domain-Driven Design (DDD) with strict layering
 and dependency injection throughout.
 
 ## Layers
 
 ```
-cmd/sandbox-agent/main.go     (composition root — wires everything)
-cmd/sandbox-init/main.go      (guest PID 1 init binary)
+cmd/apiary/main.go     (composition root — wires everything)
+cmd/apiary-init/main.go      (guest PID 1 init binary)
         │
         ▼
    app/sandbox.go              (application service — orchestrates domain + infra)
@@ -90,14 +90,14 @@ Concrete implementations of domain interfaces and system integration.
   SSH sessions with raw terminal mode, SIGWINCH handling, and context
   cancellation support.
 - **`config/loader.go`** -- `Loader` reads YAML config from
-  `$XDG_CONFIG_HOME/sandbox-agent/config.yaml` with graceful fallback
+  `$XDG_CONFIG_HOME/apiary/config.yaml` with graceful fallback
   when the file doesn't exist.
 - **`agent/registry.go`** -- In-memory `Registry` pre-loaded with
   built-in agents (claude-code, codex, opencode). Supports adding
   custom agents from config.
 - **`exclude/`** -- Two-tier gitignore-compatible pattern matching.
   Security patterns are non-overridable; performance patterns can be
-  negated in `.sandboxignore`.
+  negated in `.apiaryignore`.
 - **`workspace/`** -- COW workspace cloning using FICLONE (Linux),
   clonefile (macOS), or copy fallback. Includes stale snapshot cleanup
   and symlink validation for path traversal protection.
@@ -108,7 +108,7 @@ Concrete implementations of domain interfaces and system integration.
   flusher with hash re-verification between diff and flush (TOCTOU
   protection).
 
-### Composition Root (`cmd/sandbox-agent/main.go`)
+### Composition Root (`cmd/apiary/main.go`)
 
 Wires all concrete implementations together:
 
@@ -166,7 +166,7 @@ This makes the app layer fully testable with mocks — see
 ## VM Lifecycle
 
 ```
-sandbox-agent claude-code
+apiary claude-code
         │
         ▼
    Create workspace snapshot (if review enabled)
@@ -180,11 +180,11 @@ sandbox-agent claude-code
         ▼
    Run rootfs hooks:
      1. InjectSSHKeys    → /home/sandbox/.ssh/authorized_keys
-     2. InjectInitBinary → /sandbox-init (compiled Go binary)
+     2. InjectInitBinary → /apiary-init (compiled Go binary)
      3. InjectEnvFile    → /etc/sandbox-env
         │
         ▼
-   Write .krun_config.json (init override → /sandbox-init)
+   Write .krun_config.json (init override → /apiary-init)
         │
         ▼
    Start networking (in-process, gvisor-tap-vsock)
@@ -193,8 +193,8 @@ sandbox-agent claude-code
    Spawn propolis-runner (libkrun microVM)
         │
         ▼
-   Guest boots (/sandbox-init as PID 1):
-     sandbox-init → guest/boot.Run():
+   Guest boots (/apiary-init as PID 1):
+     apiary-init → guest/boot.Run():
        - Mount essential filesystems (/proc, /sys, /dev, /tmp, /run)
        - Configure loopback networking (netlink)
        - Mount virtiofs workspace → /workspace
@@ -223,7 +223,7 @@ sandbox-agent claude-code
 ## Guest Layer (`internal/guest/`)
 
 Code that runs inside the microVM (Linux only, compiled into
-`cmd/sandbox-init/`):
+`cmd/apiary-init/`):
 
 - **`boot/`** -- Orchestrates guest startup: mount filesystems,
   configure networking, mount workspace, load env, start SSH server.
@@ -245,8 +245,8 @@ Inside the VM:
 | `/workspace` | Host workspace directory (virtio-fs mount) |
 | `/etc/sandbox-env` | `export KEY='value'` lines for forwarded vars |
 | `/home/sandbox/.ssh/authorized_keys` | Ephemeral public key for SSH access |
-| `/sandbox-init` | Compiled Go init binary (PID 1) |
-| `/.krun_config.json` | libkrun config pointing to `/sandbox-init` |
+| `/apiary-init` | Compiled Go init binary (PID 1) |
+| `/.krun_config.json` | libkrun config pointing to `/apiary-init` |
 
 ## Security Model
 
@@ -257,7 +257,7 @@ Inside the VM:
 - **Localhost-only SSH**: Port forwards bind to `127.0.0.1` only.
 - **Shell-escaped env injection**: All environment variable values are
   single-quote escaped to prevent injection.
-- **No persistent state**: sandbox-agent doesn't maintain any state
+- **No persistent state**: apiary doesn't maintain any state
   between runs. Each invocation is fully ephemeral.
 - **Snapshot hash verification**: File hashes are re-verified between
   diff and flush to prevent TOCTOU (time-of-check-time-of-use) attacks.
@@ -265,7 +265,7 @@ Inside the VM:
   copying. `ValidateInBounds` resolves symlinks in both base and target.
 - **Non-overridable security patterns**: Sensitive files (`.env*`,
   `*.pem`, `.ssh/`, credentials, etc.) are always excluded from snapshots
-  and cannot be negated in `.sandboxignore`.
+  and cannot be negated in `.apiaryignore`.
 - **Permission stripping**: Setuid, setgid, and sticky bits are stripped
   when flushing files back to the original workspace.
 - **VM stopped before review**: The VM is explicitly stopped before
@@ -274,7 +274,7 @@ Inside the VM:
 
 ## Relationship to Propolis
 
-sandbox-agent is a consumer of the [propolis](https://github.com/stacklok/propolis)
+apiary is a consumer of the [propolis](https://github.com/stacklok/propolis)
 library. It uses propolis via a local `replace` directive in `go.mod`:
 
 ```
@@ -291,7 +291,7 @@ replace github.com/stacklok/propolis => ../propolis
 | `WithPorts` | Forward SSH (host → guest:22) |
 | `WithVirtioFS` | Mount workspace directory |
 | `WithRootFSHook` | Inject SSH keys, init binary, env file |
-| `WithInitOverride` | Replace OCI CMD with `/sandbox-init` |
+| `WithInitOverride` | Replace OCI CMD with `/apiary-init` |
 | `WithPostBoot` | Wait for SSH readiness |
 | `WithRunnerPath` | Locate propolis-runner binary |
 | `ssh.GenerateKeyPair` | Create ephemeral SSH keys |

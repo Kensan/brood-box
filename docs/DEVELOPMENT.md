@@ -18,10 +18,10 @@ For building the propolis-runner (needed for actual VM execution):
 # Clone alongside propolis
 cd ~/Development/stacklok
 git clone https://github.com/stacklok/propolis.git
-git clone https://github.com/stacklok/sandbox-agent.git
+git clone https://github.com/stacklok/apiary.git
 
 # Install dependencies
-cd sandbox-agent
+cd apiary
 task tidy
 
 # Run the full verification pipeline
@@ -32,9 +32,9 @@ task verify
 
 | Command | Description |
 |---------|-------------|
-| `task build` | Build `bin/sandbox-agent` (pure Go, `CGO_ENABLED=0`) |
-| `task build-init` | Cross-compile `sandbox-init` for guest VM (Linux only) |
-| `task build-dev` | Build sandbox-agent + `bin/propolis-runner` (requires libkrun-devel) |
+| `task build` | Build `bin/apiary` (pure Go, `CGO_ENABLED=0`) |
+| `task build-init` | Cross-compile `apiary-init` for guest VM (Linux only) |
+| `task build-dev` | Build apiary + `bin/propolis-runner` (requires libkrun-devel) |
 | `task test` | Run tests with race detector |
 | `task test-coverage` | Run tests with coverage report |
 | `task lint` | Run golangci-lint |
@@ -59,7 +59,7 @@ Edit `internal/infra/agent/registry.go` and add an entry to the
 ```go
 "my-agent": {
     Name:          "my-agent",
-    Image:         "ghcr.io/stacklok/sandbox-agent/my-agent:latest",
+    Image:         "ghcr.io/stacklok/apiary/my-agent:latest",
     Command:       []string{"my-agent"},
     EnvForward:    []string{"MY_API_KEY", "MY_AGENT_*"},
     DefaultCPUs:   2,
@@ -67,7 +67,7 @@ Edit `internal/infra/agent/registry.go` and add an entry to the
 },
 ```
 
-Then update the CLI help text in `cmd/sandbox-agent/main.go` and the
+Then update the CLI help text in `cmd/apiary/main.go` and the
 documentation.
 
 ## Writing Tests

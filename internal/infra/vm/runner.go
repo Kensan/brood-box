@@ -17,8 +17,8 @@ import (
 	"github.com/stacklok/propolis/net/topology"
 	propolisssh "github.com/stacklok/propolis/ssh"
 
-	"github.com/stacklok/sandbox-agent/internal/domain/agent"
-	domvm "github.com/stacklok/sandbox-agent/internal/domain/vm"
+	"github.com/stacklok/apiary/internal/domain/agent"
+	domvm "github.com/stacklok/apiary/internal/domain/vm"
 )
 
 // Ensure PropolisRunner implements domvm.VMRunner at compile time.
@@ -98,7 +98,7 @@ func (r *PropolisRunner) Start(ctx context.Context, cfg domvm.VMConfig) (domvm.V
 			InjectInitBinary(),
 			InjectEnvFile(cfg.EnvVars),
 		),
-		propolis.WithInitOverride("/sandbox-init"),
+		propolis.WithInitOverride("/apiary-init"),
 		propolis.WithPostBoot(func(ctx context.Context, _ *propolis.VM) error {
 			r.logger.Info("waiting for SSH", "port", sshPort)
 			client := propolisssh.NewClient("127.0.0.1", sshPort, "sandbox", privKeyPath)
@@ -213,14 +213,14 @@ func (v *propolisVM) SSHKeyPath() string {
 	return v.sshKeyPath
 }
 
-// vmDataDir returns a per-VM data directory under ~/.config/sandbox-agent/<name>.
+// vmDataDir returns a per-VM data directory under ~/.config/apiary/<name>.
 // This isolates state files, logs, and locks so multiple VMs can run in parallel.
 func vmDataDir(name string) (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("determining home directory: %w", err)
 	}
-	return filepath.Join(home, ".config", "sandbox-agent", "vms", name), nil
+	return filepath.Join(home, ".config", "apiary", "vms", name), nil
 }
 
 // pickFreePort asks the kernel for a free TCP port by binding to :0, reading

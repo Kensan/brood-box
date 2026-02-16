@@ -27,7 +27,7 @@ import (
 	vmcpserver "github.com/stacklok/toolhive/pkg/vmcp/server"
 	workloadsmgr "github.com/stacklok/toolhive/pkg/workloads"
 
-	"github.com/stacklok/sandbox-agent/internal/domain/hostservice"
+	"github.com/stacklok/apiary/internal/domain/hostservice"
 )
 
 // VMCPProvider implements hostservice.Provider using toolhive's vmcp library.
@@ -42,7 +42,7 @@ type VMCPProvider struct {
 
 // NewVMCPProvider creates a new provider that will proxy MCP traffic to
 // backends discovered in the given ToolHive group.
-// logWriter receives toolhive's zap logs (typically the sandbox-agent log file).
+// logWriter receives toolhive's zap logs (typically the apiary log file).
 // If nil, toolhive logs are discarded.
 func NewVMCPProvider(group string, port uint16, configPath string, logger *slog.Logger, logWriter io.Writer) *VMCPProvider {
 	return &VMCPProvider{
@@ -57,11 +57,11 @@ func NewVMCPProvider(group string, port uint16, configPath string, logger *slog.
 // Services discovers backends from the configured ToolHive group and returns
 // an HTTP handler that aggregates their MCP capabilities.
 func (p *VMCPProvider) Services(ctx context.Context) ([]hostservice.Service, error) {
-	// Redirect the toolhive zap global logger to the sandbox-agent log file
+	// Redirect the toolhive zap global logger to the apiary log file
 	// so vmcp diagnostics don't pollute stdout/stderr during the terminal session.
 	initToolhiveLogger(p.logWriter)
 
-	// Force CLI-mode discovery. sandbox-agent always runs on the host, never
+	// Force CLI-mode discovery. apiary always runs on the host, never
 	// in K8s, but a K8s kubeconfig on the machine would cause auto-detection
 	// to pick K8s mode and resolve wrong backend URLs.
 	groupsMgr, err := groups.NewCLIManager()
@@ -138,7 +138,7 @@ func (p *VMCPProvider) Services(ctx context.Context) ([]hostservice.Service, err
 	srv, err := vmcpserver.New(
 		ctx,
 		&vmcpserver.Config{
-			Name:           "sandbox-mcp",
+			Name:           "apiary-mcp",
 			GroupRef:       p.group,
 			Port:           int(p.port),
 			EndpointPath:   "/mcp",

@@ -11,23 +11,23 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/stacklok/sandbox-agent/internal/domain/snapshot"
+	"github.com/stacklok/apiary/internal/domain/snapshot"
 )
 
 // sandboxIgnoreFile is the name of the per-workspace exclude config file.
-const sandboxIgnoreFile = ".sandboxignore"
+const sandboxIgnoreFile = ".apiaryignore"
 
-// LoadExcludeConfig reads .sandboxignore from the workspace root (if present),
+// LoadExcludeConfig reads .apiaryignore from the workspace root (if present),
 // merges it with built-in defaults and CLI patterns, and returns the combined
 // ExcludeConfig.
 //
-// Negation lines in .sandboxignore that would re-include security patterns
+// Negation lines in .apiaryignore that would re-include security patterns
 // are stripped and a warning is logged.
 func LoadExcludeConfig(workspacePath string, cliPatterns []string, logger *slog.Logger) (snapshot.ExcludeConfig, error) {
 	securityPatterns := snapshot.DefaultSecurityPatterns()
 	perfPatterns := snapshot.DefaultPerformancePatterns()
 
-	// Read .sandboxignore (missing file = no error).
+	// Read .apiaryignore (missing file = no error).
 	ignoreFile := filepath.Join(workspacePath, sandboxIgnoreFile)
 	filePatterns, err := readIgnoreFile(ignoreFile, securityPatterns, logger)
 	if err != nil {
@@ -68,7 +68,7 @@ func NewDiffMatcher(cfg snapshot.ExcludeConfig, gitignorePatterns []string) snap
 	return NewMatcher(userAndPerf, cfg.SecurityPatterns)
 }
 
-// readIgnoreFile reads a .sandboxignore file and returns the cleaned patterns.
+// readIgnoreFile reads a .apiaryignore file and returns the cleaned patterns.
 // Negation patterns that would re-include security-sensitive files are stripped.
 func readIgnoreFile(path string, securityPatterns []string, logger *slog.Logger) ([]string, error) {
 	f, err := os.Open(path)
@@ -98,7 +98,7 @@ func readIgnoreFile(path string, securityPatterns []string, logger *slog.Logger)
 		if strings.HasPrefix(line, "!") {
 			negated := line[1:]
 			if securitySet[negated] {
-				logger.Warn("ignoring negation of security pattern in .sandboxignore",
+				logger.Warn("ignoring negation of security pattern in .apiaryignore",
 					"pattern", line,
 					"reason", "security patterns cannot be overridden",
 				)

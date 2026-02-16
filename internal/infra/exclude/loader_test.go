@@ -33,7 +33,7 @@ func TestLoadExcludeConfig_WithSandboxIgnore(t *testing.T) {
 
 	dir := t.TempDir()
 	content := "# Comment line\n*.tmp\nlogs/\n\n"
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".sandboxignore"), []byte(content), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".apiaryignore"), []byte(content), 0o644))
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 
@@ -50,7 +50,7 @@ func TestLoadExcludeConfig_SecurityNegationStripped(t *testing.T) {
 	dir := t.TempDir()
 	// Attempt to negate security patterns — should be stripped.
 	content := "!.env*\n!*.pem\nkeep-this-pattern\n!node_modules/\n"
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".sandboxignore"), []byte(content), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".apiaryignore"), []byte(content), 0o644))
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 

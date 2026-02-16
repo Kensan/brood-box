@@ -11,8 +11,8 @@ import (
 
 	"github.com/stacklok/propolis/image"
 
-	domainagent "github.com/stacklok/sandbox-agent/internal/domain/agent"
-	"github.com/stacklok/sandbox-agent/internal/infra/vm/initbin"
+	domainagent "github.com/stacklok/apiary/internal/domain/agent"
+	"github.com/stacklok/apiary/internal/infra/vm/initbin"
 )
 
 // InjectSSHKeys returns a RootFS hook that writes the given public key
@@ -42,12 +42,12 @@ func InjectSSHKeys(pubKey string) func(string, *image.OCIConfig) error {
 	}
 }
 
-// InjectInitBinary returns a RootFS hook that writes the embedded sandbox-init
-// binary to /sandbox-init in the guest rootfs. This replaces the former shell
+// InjectInitBinary returns a RootFS hook that writes the embedded apiary-init
+// binary to /apiary-init in the guest rootfs. This replaces the former shell
 // init script and its dependencies (dropbear, iproute2, mount).
 func InjectInitBinary() func(string, *image.OCIConfig) error {
 	return func(rootfsPath string, _ *image.OCIConfig) error {
-		initPath := filepath.Join(rootfsPath, "sandbox-init")
+		initPath := filepath.Join(rootfsPath, "apiary-init")
 		if err := os.WriteFile(initPath, initbin.Binary, 0o755); err != nil {
 			return fmt.Errorf("writing init binary: %w", err)
 		}
