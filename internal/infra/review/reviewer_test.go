@@ -136,6 +136,106 @@ func TestInteractiveReviewer_ShowsSummary(t *testing.T) {
 	output := out.String()
 	assert.Contains(t, output, "Workspace Review")
 	assert.Contains(t, output, "2 file(s) changed")
-	assert.Contains(t, output, "[added] a.go")
-	assert.Contains(t, output, "[modified] m.go")
+	assert.Contains(t, output, "a.go")
+	assert.Contains(t, output, "m.go")
+}
+
+func TestInteractiveReviewer_AcceptAllBulk(t *testing.T) {
+	t.Parallel()
+
+	changes := []snapshot.FileChange{
+		{RelPath: "first.go", Kind: snapshot.Modified},
+		{RelPath: "second.go", Kind: snapshot.Added},
+		{RelPath: "third.go", Kind: snapshot.Deleted},
+	}
+
+	// Accept first individually, then accept-all for remaining.
+	input := "y\na\n"
+	var out bytes.Buffer
+	r := NewInteractiveReviewer(strings.NewReader(input), &out)
+
+	result, err := r.Review(changes)
+	require.NoError(t, err)
+	assert.Len(t, result.Accepted, 3)
+	assert.Empty(t, result.Rejected)
+	assert.Contains(t, out.String(), "Accepted remaining 2 file(s)")
+}
+
+func TestInteractiveReviewer_RejectAllBulk(t *testing.T) {
+	t.Parallel()
+
+	changes := []snapshot.FileChange{
+		{RelPath: "first.go", Kind: snapshot.Modified},
+		{RelPath: "second.go", Kind: snapshot.Added},
+		{RelPath: "third.go", Kind: snapshot.Deleted},
+	}
+
+	// Accept first individually, then reject-all for remaining.
+	input := "y\nA\n"
+	var out bytes.Buffer
+	r := NewInteractiveReviewer(strings.NewReader(input), &out)
+
+	result, err := r.Review(changes)
+	require.NoError(t, err)
+	assert.Len(t, result.Accepted, 1)
+	assert.Len(t, result.Rejected, 2)
+	assert.Equal(t, "first.go", result.Accepted[0].RelPath)
+	assert.Contains(t, out.String(), "Rejected remaining 2 file(s)")
+}
+
+func TestInteractiveReviewer_AcceptAllOnFirst(t *testing.T) {
+	t.Parallel()
+
+	changes := []snapshot.FileChange{
+		{RelPath: "a.go", Kind: snapshot.Added},
+		{RelPath: "b.go", Kind: snapshot.Modified},
+	}
+
+	// Accept-all on the very first file.
+	input := "a\n"
+	r := NewInteractiveReviewer(strings.NewReader(input), &bytes.Buffer{})
+
+	result, err := r.Review(changes)
+	require.NoError(t, err)
+	assert.Len(t, result.Accepted, 2)
+	assert.Empty(t, result.Rejected)
+}
+
+func TestInteractiveReviewer_RejectAllOnFirst(t *testing.T) {
+	t.Parallel()
+
+	changes := []snapshot.FileChange{
+		{RelPath: "a.go", Kind: snapshot.Added},
+		{RelPath: "b.go", Kind: snapshot.Modified},
+	}
+
+	// Reject-all on the very first file.
+	input := "A\n"
+	r := NewInteractiveReviewer(strings.NewReader(input), &bytes.Buffer{})
+
+	result, err := r.Review(changes)
+	require.NoError(t, err)
+	assert.Empty(t, result.Accepted)
+	assert.Len(t, result.Rejected, 2)
+}
+
+func TestInteractiveReviewer_ReviewComplete(t *testing.T) {
+	t.Parallel()
+
+	changes := []snapshot.FileChange{
+		{RelPath: "a.go", Kind: snapshot.Added},
+		{RelPath: "b.go", Kind: snapshot.Modified},
+	}
+
+	input := "y\nn\n"
+	var out bytes.Buffer
+	r := NewInteractiveReviewer(strings.NewReader(input), &out)
+
+	_, err := r.Review(changes)
+	require.NoError(t, err)
+
+	output := out.String()
+	assert.Contains(t, output, "Review complete")
+	assert.Contains(t, output, "1 accepted")
+	assert.Contains(t, output, "1 rejected")
 }

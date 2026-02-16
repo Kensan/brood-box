@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -19,11 +20,14 @@ import (
 	"github.com/stacklok/sandbox-agent/internal/app"
 	"github.com/stacklok/sandbox-agent/internal/domain/agent"
 	domainconfig "github.com/stacklok/sandbox-agent/internal/domain/config"
+	"github.com/stacklok/sandbox-agent/internal/domain/progress"
 	"github.com/stacklok/sandbox-agent/internal/domain/snapshot"
 	infraagent "github.com/stacklok/sandbox-agent/internal/infra/agent"
 	infraconfig "github.com/stacklok/sandbox-agent/internal/infra/config"
 	"github.com/stacklok/sandbox-agent/internal/infra/diff"
 	"github.com/stacklok/sandbox-agent/internal/infra/exclude"
+	infralogging "github.com/stacklok/sandbox-agent/internal/infra/logging"
+	infraprogress "github.com/stacklok/sandbox-agent/internal/infra/progress"
 	"github.com/stacklok/sandbox-agent/internal/infra/review"
 	infrassh "github.com/stacklok/sandbox-agent/internal/infra/ssh"
 	infraterminal "github.com/stacklok/sandbox-agent/internal/infra/terminal"
@@ -31,6 +35,15 @@ import (
 	infraws "github.com/stacklok/sandbox-agent/internal/infra/workspace"
 	"github.com/stacklok/sandbox-agent/internal/version"
 )
+
+// defaultLogDir is the directory for sandbox-agent log files.
+const defaultLogDir = ".config/sandbox-agent/logs"
+
+// defaultLogFile is the log file name within the log directory.
+const defaultLogFile = "sandbox-agent.log"
+
+// maxLogSize is the maximum log file size before truncation (10 MiB).
+const maxLogSize = 10 * 1024 * 1024
 
 func main() {
 	if err := rootCmd().Execute(); err != nil {
@@ -51,6 +64,7 @@ func rootCmd() *cobra.Command {
 		debug    bool
 		noReview bool
 		excludes []string
+		logFile  string
 	)
 
 	cmd := &cobra.Command{
@@ -84,6 +98,7 @@ Example:
 				debug:     debug,
 				noReview:  noReview,
 				excludes:  excludes,
+				logFile:   logFile,
 			})
 		},
 		SilenceUsage:  true,
@@ -96,9 +111,10 @@ Example:
 	cmd.Flags().Uint16Var(&sshPort, "ssh-port", 0, "Host SSH port (0 = auto-pick)")
 	cmd.Flags().StringVar(&cfgPath, "config", "", "Config file path (default: ~/.config/sandbox-agent/config.yaml)")
 	cmd.Flags().StringVar(&image, "image", "", "Override OCI image reference")
-	cmd.Flags().BoolVar(&debug, "debug", false, "Enable debug logging")
+	cmd.Flags().BoolVar(&debug, "debug", false, "Enable debug logging (shows full slog output on stderr)")
 	cmd.Flags().BoolVar(&noReview, "no-review", false, "Disable workspace snapshot isolation (mount workspace directly)")
 	cmd.Flags().StringSliceVar(&excludes, "exclude", nil, "Additional exclude patterns for workspace snapshot (repeatable)")
+	cmd.Flags().StringVar(&logFile, "log-file", "", "Override log file path (default: ~/.config/sandbox-agent/logs/sandbox-agent.log)")
 
 	// Add list subcommand.
 	cmd.AddCommand(listCmd())
@@ -131,6 +147,7 @@ type runFlags struct {
 	debug     bool
 	noReview  bool
 	excludes  []string
+	logFile   string
 }
 
 func run(parentCtx context.Context, agentName string, flags runFlags) error {
@@ -138,24 +155,26 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 	ctx, cancel := signal.NotifyContext(parentCtx, syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	var logLevel slog.LevelVar
-	logLevel.Set(slog.LevelInfo)
-	if flags.debug {
-		logLevel.Set(slog.LevelDebug)
-	} else if lvl := os.Getenv("SLOG_LEVEL"); lvl != "" {
-		if err := logLevel.UnmarshalText([]byte(lvl)); err != nil {
-			return fmt.Errorf("invalid SLOG_LEVEL %q: %w", lvl, err)
-		}
+	// Set up logging: always write to file, optionally also to stderr.
+	logFile, logCloser, err := openLogFile(flags.logFile)
+	if err != nil {
+		// Non-fatal: fall back to stderr-only logging.
+		_, _ = fmt.Fprintf(os.Stderr, "Warning: could not open log file: %s\n", err)
 	}
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-		Level: &logLevel,
-	}))
+	if logCloser != nil {
+		defer func() { _ = logCloser.Close() }()
+	}
+
+	logger := setupLogger(logFile, flags.debug)
 	slog.SetDefault(logger)
+
+	// Set up progress observer based on mode.
+	terminal := infraterminal.NewOSTerminal(os.Stdin, os.Stdout, os.Stderr)
+	observer := chooseObserver(terminal, logger, flags.debug)
 
 	// Resolve workspace.
 	ws := flags.workspace
 	if ws == "" {
-		var err error
 		ws, err = os.Getwd()
 		if err != nil {
 			return fmt.Errorf("getting current directory: %w", err)
@@ -236,8 +255,6 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 	}
 
 	// Wire dependencies.
-	terminal := infraterminal.NewOSTerminal(os.Stdin, os.Stdout, os.Stderr)
-
 	var reviewer *review.InteractiveReviewer
 	deps := app.SandboxDeps{
 		Registry:      registry,
@@ -246,6 +263,7 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 		Config:        cfg,
 		EnvProvider:   agent.NewOSEnvProvider(os.Environ),
 		Logger:        logger,
+		Observer:      observer,
 	}
 
 	// Wire snapshot isolation dependencies only when review is enabled.
@@ -279,9 +297,12 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 		return err
 	}
 	defer func() {
-		logger.Info("cleaning up workspace snapshot")
+		observer.Start(progress.PhaseCleaning, "Cleaning up...")
 		if cleanErr := sb.Cleanup(); cleanErr != nil {
+			observer.Fail("Failed to clean up snapshot")
 			logger.Error("failed to clean up snapshot", "error", cleanErr)
+		} else {
+			observer.Complete("Cleaned up snapshot")
 		}
 	}()
 
@@ -299,21 +320,16 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 		if chErr != nil {
 			reviewErr = chErr
 		} else if len(changes) > 0 {
-			logger.Info("workspace changes detected", "count", len(changes))
 			result, revErr := reviewer.Review(changes)
 			if revErr != nil {
 				reviewErr = fmt.Errorf("reviewing changes: %w", revErr)
 			} else if len(result.Accepted) > 0 {
-				logger.Info("flushing accepted changes",
-					"accepted", len(result.Accepted),
-					"rejected", len(result.Rejected),
-				)
 				reviewErr = runner.Flush(sb, result.Accepted)
 			} else {
-				logger.Info("no changes accepted")
+				observer.Warn("No changes accepted")
 			}
 		} else {
-			logger.Info("no workspace changes detected")
+			observer.Warn("No workspace changes detected")
 		}
 		if reviewErr != nil {
 			logger.Error("review/flush failed", "error", reviewErr)
@@ -343,4 +359,69 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 	}
 
 	return nil
+}
+
+// openLogFile opens (or creates) the log file, truncating if it exceeds maxLogSize.
+// Returns the file, a closer, and any error.
+func openLogFile(override string) (*os.File, io.Closer, error) {
+	logPath := override
+	if logPath == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, nil, fmt.Errorf("getting home dir: %w", err)
+		}
+		logDir := filepath.Join(home, defaultLogDir)
+		if err := os.MkdirAll(logDir, 0o750); err != nil {
+			return nil, nil, fmt.Errorf("creating log dir: %w", err)
+		}
+		logPath = filepath.Join(logDir, defaultLogFile)
+	}
+
+	// Truncate if oversized.
+	if info, err := os.Stat(logPath); err == nil && info.Size() > maxLogSize {
+		_ = os.Truncate(logPath, 0)
+	}
+
+	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o640)
+	if err != nil {
+		return nil, nil, err
+	}
+	return f, f, nil
+}
+
+// setupLogger creates a slog.Logger with file + optional stderr handlers.
+func setupLogger(logFile *os.File, debug bool) *slog.Logger {
+	var handlers []slog.Handler
+
+	// Always log to file if available.
+	if logFile != nil {
+		handlers = append(handlers, infralogging.NewFileHandler(logFile, slog.LevelDebug))
+	}
+
+	// In debug mode, also log to stderr.
+	if debug {
+		handlers = append(handlers, slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+			Level: slog.LevelDebug,
+		}))
+	}
+
+	if len(handlers) == 0 {
+		// Fallback: discard all logs.
+		return slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
+	if len(handlers) == 1 {
+		return slog.New(handlers[0])
+	}
+	return slog.New(infralogging.NewFanoutHandler(handlers...))
+}
+
+// chooseObserver selects the appropriate progress observer for the current environment.
+func chooseObserver(terminal *infraterminal.OSTerminal, logger *slog.Logger, debug bool) progress.Observer {
+	if debug {
+		return infraprogress.NewLogObserver(logger)
+	}
+	if terminal.IsInteractive() {
+		return infraprogress.NewSpinnerObserver(os.Stderr)
+	}
+	return infraprogress.NewSimpleObserver(os.Stderr)
 }

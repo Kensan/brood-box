@@ -13,6 +13,7 @@ import (
 
 	"github.com/stacklok/sandbox-agent/internal/domain/agent"
 	"github.com/stacklok/sandbox-agent/internal/domain/config"
+	"github.com/stacklok/sandbox-agent/internal/domain/progress"
 	"github.com/stacklok/sandbox-agent/internal/domain/session"
 	"github.com/stacklok/sandbox-agent/internal/domain/snapshot"
 	domvm "github.com/stacklok/sandbox-agent/internal/domain/vm"
@@ -65,6 +66,7 @@ type SandboxDeps struct {
 	Config        *config.Config
 	EnvProvider   agent.EnvProvider
 	Logger        *slog.Logger
+	Observer      progress.Observer
 
 	// Snapshot isolation dependencies (nil = disabled).
 	WorkspaceCloner workspace.WorkspaceCloner
@@ -109,6 +111,7 @@ type SandboxRunner struct {
 	config          *config.Config
 	envProvider     agent.EnvProvider
 	logger          *slog.Logger
+	observer        progress.Observer
 	workspaceCloner workspace.WorkspaceCloner
 	reviewer        snapshot.Reviewer
 	flusher         snapshot.Flusher
@@ -117,6 +120,10 @@ type SandboxRunner struct {
 
 // NewSandboxRunner creates a new SandboxRunner with the given dependencies.
 func NewSandboxRunner(deps SandboxDeps) *SandboxRunner {
+	obs := deps.Observer
+	if obs == nil {
+		obs = progress.Nop()
+	}
 	return &SandboxRunner{
 		registry:        deps.Registry,
 		vmRunner:        deps.VMRunner,
@@ -124,6 +131,7 @@ func NewSandboxRunner(deps SandboxDeps) *SandboxRunner {
 		config:          deps.Config,
 		envProvider:     deps.EnvProvider,
 		logger:          deps.Logger,
+		observer:        obs,
 		workspaceCloner: deps.WorkspaceCloner,
 		reviewer:        deps.Reviewer,
 		flusher:         deps.Flusher,
@@ -136,8 +144,10 @@ func NewSandboxRunner(deps SandboxDeps) *SandboxRunner {
 // The caller must call Cleanup() on the returned Sandbox when done.
 func (s *SandboxRunner) Prepare(ctx context.Context, agentName string, opts RunOpts) (*Sandbox, error) {
 	// 1. Resolve agent from registry.
+	s.observer.Start(progress.PhaseResolvingAgent, "Resolving agent...")
 	ag, err := s.registry.Get(agentName)
 	if err != nil {
+		s.observer.Fail("Agent not found")
 		return nil, fmt.Errorf("resolving agent: %w", err)
 	}
 
@@ -166,7 +176,9 @@ func (s *SandboxRunner) Prepare(ctx context.Context, agentName string, opts RunO
 
 	ag = config.Merge(ag, override, cfg.Defaults)
 
-	s.logger.Info("resolved agent",
+	s.observer.Complete(fmt.Sprintf("Resolved agent %s (%d CPUs, %d MiB)",
+		ag.Name, ag.DefaultCPUs, ag.DefaultMemory))
+	s.logger.Debug("resolved agent",
 		"name", ag.Name,
 		"image", ag.Image,
 		"cpus", ag.DefaultCPUs,
@@ -180,7 +192,7 @@ func (s *SandboxRunner) Prepare(ctx context.Context, agentName string, opts RunO
 		for k := range envVars {
 			keys = append(keys, k)
 		}
-		s.logger.Info("forwarding environment variables", "keys", keys)
+		s.logger.Debug("forwarding environment variables", "keys", keys)
 	}
 
 	// 4. Set up workspace path (possibly with snapshot isolation).
@@ -198,14 +210,16 @@ func (s *SandboxRunner) Prepare(ctx context.Context, agentName string, opts RunO
 	}
 
 	if opts.Snapshot.Enabled && s.workspaceCloner != nil {
-		s.logger.Info("creating workspace snapshot for review isolation")
+		s.observer.Start(progress.PhaseCreatingSnapshot, "Creating workspace snapshot...")
 
 		snap, err = s.workspaceCloner.CreateSnapshot(ctx, workspacePath, snapshotMatcher)
 		if err != nil {
+			s.observer.Fail("Failed to create snapshot")
 			return nil, fmt.Errorf("creating workspace snapshot: %w", err)
 		}
 
-		s.logger.Info("workspace snapshot created",
+		s.observer.Complete("Created workspace snapshot")
+		s.logger.Debug("workspace snapshot created",
 			"original", snap.OriginalPath,
 			"snapshot", snap.SnapshotPath,
 		)
@@ -213,6 +227,8 @@ func (s *SandboxRunner) Prepare(ctx context.Context, agentName string, opts RunO
 	}
 
 	// 5. Start VM with (possibly overridden) workspace path.
+	s.observer.Start(progress.PhaseStartingVM, "Starting sandbox VM...")
+
 	vmCfg := domvm.VMConfig{
 		Name:          "sandbox-" + ag.Name,
 		Image:         ag.Image,
@@ -225,6 +241,7 @@ func (s *SandboxRunner) Prepare(ctx context.Context, agentName string, opts RunO
 
 	sandboxVM, err := s.vmRunner.Start(ctx, vmCfg)
 	if err != nil {
+		s.observer.Fail("Failed to start VM")
 		// Clean up snapshot if we created one before VM start failed.
 		if snap != nil {
 			if cleanErr := snap.Cleanup(); cleanErr != nil {
@@ -233,6 +250,8 @@ func (s *SandboxRunner) Prepare(ctx context.Context, agentName string, opts RunO
 		}
 		return nil, fmt.Errorf("starting sandbox VM: %w", err)
 	}
+
+	s.observer.Complete("Sandbox ready")
 
 	return &Sandbox{
 		Agent:         ag,
@@ -258,7 +277,7 @@ func (s *SandboxRunner) Attach(ctx context.Context, sb *Sandbox, terminal sessio
 		Terminal: terminal,
 	}
 
-	s.logger.Info("connecting to sandbox VM",
+	s.logger.Debug("connecting to sandbox VM",
 		"port", sessionOpts.Port,
 		"command", sb.Agent.Command,
 	)
@@ -270,10 +289,15 @@ func (s *SandboxRunner) Attach(ctx context.Context, sb *Sandbox, terminal sessio
 // Uses a fresh context with timeout to ensure shutdown completes even if the
 // parent context is already cancelled.
 func (s *SandboxRunner) Stop(sb *Sandbox) error {
-	s.logger.Info("shutting down sandbox VM")
+	s.observer.Start(progress.PhaseShuttingDown, "Shutting down VM...")
 	stopCtx, stopCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer stopCancel()
-	return sb.VM.Stop(stopCtx)
+	if err := sb.VM.Stop(stopCtx); err != nil {
+		s.observer.Fail("Failed to stop VM")
+		return err
+	}
+	s.observer.Complete("VM stopped")
+	return nil
 }
 
 // Changes computes the diff between the original workspace and the snapshot.
@@ -282,11 +306,13 @@ func (s *SandboxRunner) Changes(sb *Sandbox) ([]snapshot.FileChange, error) {
 	if sb.Snapshot == nil || s.differ == nil {
 		return nil, nil
 	}
-	s.logger.Info("computing workspace diff")
+	s.observer.Start(progress.PhaseComputingDiff, "Computing workspace changes...")
 	changes, err := s.differ.Diff(sb.Snapshot.OriginalPath, sb.Snapshot.SnapshotPath, sb.DiffMatcher)
 	if err != nil {
+		s.observer.Fail("Failed to compute diff")
 		return nil, fmt.Errorf("computing diff: %w", err)
 	}
+	s.observer.Complete(fmt.Sprintf("%d file(s) changed", len(changes)))
 	return changes, nil
 }
 
@@ -296,11 +322,12 @@ func (s *SandboxRunner) Flush(sb *Sandbox, accepted []snapshot.FileChange) error
 	if sb.Snapshot == nil || s.flusher == nil || len(accepted) == 0 {
 		return nil
 	}
-	s.logger.Info("flushing accepted changes", "count", len(accepted))
+	s.observer.Start(progress.PhaseFlushingChanges, "Flushing accepted changes...")
 	if err := s.flusher.Flush(sb.Snapshot.OriginalPath, sb.Snapshot.SnapshotPath, accepted); err != nil {
+		s.observer.Fail("Failed to flush changes")
 		return fmt.Errorf("flushing changes: %w", err)
 	}
-	s.logger.Info("changes flushed successfully")
+	s.observer.Complete(fmt.Sprintf("Flushed %d change(s)", len(accepted)))
 	return nil
 }
 
@@ -313,9 +340,12 @@ func (s *SandboxRunner) Run(ctx context.Context, agentName string, opts RunOpts)
 		return err
 	}
 	defer func() {
-		s.logger.Info("cleaning up workspace snapshot")
+		s.observer.Start(progress.PhaseCleaning, "Cleaning up...")
 		if cleanErr := sb.Cleanup(); cleanErr != nil {
+			s.observer.Fail("Failed to clean up snapshot")
 			s.logger.Error("failed to clean up snapshot", "error", cleanErr)
+		} else {
+			s.observer.Complete("Cleaned up snapshot")
 		}
 	}()
 
@@ -331,21 +361,16 @@ func (s *SandboxRunner) Run(ctx context.Context, agentName string, opts RunOpts)
 		if chErr != nil {
 			reviewErr = chErr
 		} else if len(changes) > 0 {
-			s.logger.Info("workspace changes detected", "count", len(changes))
 			result, revErr := s.reviewer.Review(changes)
 			if revErr != nil {
 				reviewErr = fmt.Errorf("reviewing changes: %w", revErr)
 			} else if len(result.Accepted) > 0 {
-				s.logger.Info("flushing accepted changes",
-					"accepted", len(result.Accepted),
-					"rejected", len(result.Rejected),
-				)
 				reviewErr = s.Flush(sb, result.Accepted)
 			} else {
-				s.logger.Info("no changes accepted")
+				s.observer.Warn("No changes accepted")
 			}
 		} else {
-			s.logger.Info("no workspace changes detected")
+			s.observer.Warn("No workspace changes detected")
 		}
 		if reviewErr != nil {
 			s.logger.Error("review/flush failed", "error", reviewErr)
