@@ -5,9 +5,12 @@ package vm
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+
+	toml "github.com/pelletier/go-toml/v2"
 )
 
 // sandboxHome is the home directory of the sandbox user inside the guest.
@@ -31,43 +34,43 @@ type claudeCodeServer struct {
 	URL  string `json:"url"`
 }
 
-// injectClaudeCodeMCP writes ~/.claude.json with a user-scope MCP server
-// so Claude Code discovers the vmcp endpoint in every project.
+// injectClaudeCodeMCP merges an MCP server entry into ~/.claude.json,
+// preserving any pre-existing keys (auth tokens, onboarding flags, etc.).
 func injectClaudeCodeMCP(rootfsPath, gatewayIP string, port uint16) error {
-	cfg := claudeCodeConfig{
-		MCPServers: map[string]claudeCodeServer{
-			"sandbox-tools": {
-				Type: "http",
-				URL:  fmt.Sprintf("http://%s:%d/mcp", gatewayIP, port),
-			},
+	servers := map[string]claudeCodeServer{
+		"sandbox-tools": {
+			Type: "http",
+			URL:  fmt.Sprintf("http://%s:%d/mcp", gatewayIP, port),
 		},
 	}
 
-	return writeJSONToHome(rootfsPath, ".claude.json", cfg)
+	homeDir := filepath.Join(rootfsPath, sandboxHome)
+	if err := mkdirAndChown(homeDir); err != nil {
+		return err
+	}
+
+	return mergeJSONKey(homeDir, ".claude.json", "mcpServers", servers)
 }
 
 // --- Codex ---
 // Ref: https://developers.openai.com/codex/config-reference/
 // Global config lives at ~/.codex/config.toml (TOML, not JSON).
 
-// injectCodexMCP writes ~/.codex/config.toml with an MCP server section.
+// injectCodexMCP merges an MCP server entry into ~/.codex/config.toml,
+// preserving any pre-existing TOML sections.
 func injectCodexMCP(rootfsPath, gatewayIP string, port uint16) error {
 	mcpURL := fmt.Sprintf("http://%s:%d/mcp", gatewayIP, port)
-
-	// Codex uses TOML — no encoder dep needed for two lines.
-	tomlContent := fmt.Sprintf("[mcp_servers.sandbox-tools]\nurl = %q\n", mcpURL)
 
 	codexDir := filepath.Join(rootfsPath, sandboxHome, ".codex")
 	if err := mkdirAndChown(codexDir); err != nil {
 		return fmt.Errorf("creating ~/.codex dir: %w", err)
 	}
 
-	configPath := filepath.Join(codexDir, "config.toml")
-	if err := os.WriteFile(configPath, []byte(tomlContent), 0o644); err != nil {
-		return fmt.Errorf("writing codex MCP config: %w", err)
-	}
-
-	return os.Chown(configPath, sandboxUID, sandboxGID)
+	return mergeTOMLKey(codexDir, "config.toml", "mcp_servers", map[string]any{
+		"sandbox-tools": map[string]any{
+			"url": mcpURL,
+		},
+	})
 }
 
 // --- OpenCode ---
@@ -86,16 +89,14 @@ type openCodeServer struct {
 	Enabled bool   `json:"enabled"`
 }
 
-// injectOpenCodeMCP writes ~/.config/opencode/opencode.json with the vmcp
-// server configured as a remote MCP endpoint.
+// injectOpenCodeMCP merges an MCP server entry into ~/.config/opencode/opencode.json,
+// preserving any pre-existing keys.
 func injectOpenCodeMCP(rootfsPath, gatewayIP string, port uint16) error {
-	cfg := openCodeConfig{
-		MCP: map[string]openCodeServer{
-			"sandbox-tools": {
-				Type:    "remote",
-				URL:     fmt.Sprintf("http://%s:%d/mcp", gatewayIP, port),
-				Enabled: true,
-			},
+	servers := map[string]openCodeServer{
+		"sandbox-tools": {
+			Type:    "remote",
+			URL:     fmt.Sprintf("http://%s:%d/mcp", gatewayIP, port),
+			Enabled: true,
 		},
 	}
 
@@ -104,7 +105,7 @@ func injectOpenCodeMCP(rootfsPath, gatewayIP string, port uint16) error {
 		return fmt.Errorf("creating ~/.config/opencode dir: %w", err)
 	}
 
-	return writeJSONToDir(opencodeDir, "opencode.json", cfg)
+	return mergeJSONKey(opencodeDir, "opencode.json", "mcp", servers)
 }
 
 // --- helpers ---
@@ -114,27 +115,62 @@ const (
 	sandboxGID = 1000
 )
 
-// writeJSONToHome marshals v as indented JSON and writes it to
-// ~sandbox/<filename>, chowned to the sandbox user.
-func writeJSONToHome(rootfsPath, filename string, v any) error {
-	homeDir := filepath.Join(rootfsPath, sandboxHome)
-	// home dir already exists from image, but ensure it.
-	if err := mkdirAndChown(homeDir); err != nil {
-		return err
+// mergeJSONKey reads an existing JSON file (if any) at dir/filename, sets
+// the given top-level key to value, and writes the result back. If the file
+// does not exist, a new object with just {key: value} is created.
+func mergeJSONKey(dir, filename, key string, value any) error {
+	path := filepath.Join(dir, filename)
+
+	existing := make(map[string]json.RawMessage)
+	if data, err := os.ReadFile(path); err == nil {
+		if err := json.Unmarshal(data, &existing); err != nil {
+			return fmt.Errorf("parsing existing %s: %w", filename, err)
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("reading existing %s: %w", filename, err)
 	}
 
-	return writeJSONToDir(homeDir, filename, v)
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Errorf("marshaling %s value for %s: %w", key, filename, err)
+	}
+	existing[key] = raw
+
+	merged, err := json.MarshalIndent(existing, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshaling merged %s: %w", filename, err)
+	}
+
+	if err := os.WriteFile(path, append(merged, '\n'), 0o644); err != nil {
+		return fmt.Errorf("writing %s: %w", filename, err)
+	}
+
+	return os.Chown(path, sandboxUID, sandboxGID)
 }
 
-// writeJSONToDir marshals v and writes it to dir/filename, chowned to sandbox.
-func writeJSONToDir(dir, filename string, v any) error {
-	data, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshaling JSON for %s: %w", filename, err)
+// mergeTOMLKey reads an existing TOML file (if any) at dir/filename, sets
+// the given top-level key to value, and writes the result back. If the file
+// does not exist, a new document with just [key] is created.
+func mergeTOMLKey(dir, filename, key string, value any) error {
+	path := filepath.Join(dir, filename)
+
+	existing := make(map[string]any)
+	if data, err := os.ReadFile(path); err == nil {
+		if err := toml.Unmarshal(data, &existing); err != nil {
+			return fmt.Errorf("parsing existing %s: %w", filename, err)
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("reading existing %s: %w", filename, err)
 	}
 
-	path := filepath.Join(dir, filename)
-	if err := os.WriteFile(path, append(data, '\n'), 0o644); err != nil {
+	existing[key] = value
+
+	merged, err := toml.Marshal(existing)
+	if err != nil {
+		return fmt.Errorf("marshaling merged %s: %w", filename, err)
+	}
+
+	if err := os.WriteFile(path, merged, 0o644); err != nil {
 		return fmt.Errorf("writing %s: %w", filename, err)
 	}
 

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	toml "github.com/pelletier/go-toml/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -152,7 +153,7 @@ func TestInjectCodexMCP(t *testing.T) {
 
 	content := string(data)
 	assert.Contains(t, content, "[mcp_servers.sandbox-tools]")
-	assert.Contains(t, content, `url = "http://192.168.127.1:4483/mcp"`)
+	assert.Contains(t, content, `url = 'http://192.168.127.1:4483/mcp'`)
 }
 
 func TestInjectCodexMCP_CustomPort(t *testing.T) {
@@ -165,7 +166,7 @@ func TestInjectCodexMCP_CustomPort(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(rootfs, sandboxHome, ".codex", "config.toml"))
 	require.NoError(t, err)
 
-	assert.Contains(t, string(data), `url = "http://10.0.0.1:8080/mcp"`)
+	assert.Contains(t, string(data), `url = 'http://10.0.0.1:8080/mcp'`)
 }
 
 func TestInjectCodexMCP_ValidTOML(t *testing.T) {
@@ -293,6 +294,124 @@ func TestMCPConfigFilePermissions(t *testing.T) {
 				"MCP config files should be world-readable (0644)")
 		})
 	}
+}
+
+// --- Merge tests: verify pre-existing config is preserved ---
+
+func TestInjectClaudeCodeMCP_PreservesExistingKeys(t *testing.T) {
+	t.Parallel()
+
+	rootfs := setupRootfs(t)
+	configPath := filepath.Join(rootfs, sandboxHome, ".claude.json")
+
+	// Pre-populate with existing user config.
+	existing := `{"hasCompletedOnboarding": true, "theme": "dark"}`
+	require.NoError(t, os.WriteFile(configPath, []byte(existing), 0o644))
+
+	err := injectClaudeCodeMCP(rootfs, "192.168.127.1", 4483)
+	require.NoError(t, err)
+
+	data, err := os.ReadFile(configPath)
+	require.NoError(t, err)
+
+	var raw map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(data, &raw))
+
+	assert.Contains(t, raw, "hasCompletedOnboarding")
+	assert.Contains(t, raw, "theme")
+	assert.Contains(t, raw, "mcpServers")
+
+	// Verify the preserved values are correct.
+	assert.JSONEq(t, "true", string(raw["hasCompletedOnboarding"]))
+	assert.JSONEq(t, `"dark"`, string(raw["theme"]))
+}
+
+func TestInjectClaudeCodeMCP_OverwritesExistingMCPServers(t *testing.T) {
+	t.Parallel()
+
+	rootfs := setupRootfs(t)
+	configPath := filepath.Join(rootfs, sandboxHome, ".claude.json")
+
+	// Pre-populate with a stale MCP server entry.
+	stale := `{"mcpServers": {"old-server": {"type": "http", "url": "http://old:1234/mcp"}}}`
+	require.NoError(t, os.WriteFile(configPath, []byte(stale), 0o644))
+
+	err := injectClaudeCodeMCP(rootfs, "192.168.127.1", 4483)
+	require.NoError(t, err)
+
+	data, err := os.ReadFile(configPath)
+	require.NoError(t, err)
+
+	var cfg claudeCodeConfig
+	require.NoError(t, json.Unmarshal(data, &cfg))
+
+	assert.Contains(t, cfg.MCPServers, "sandbox-tools", "new entry must be present")
+	assert.NotContains(t, cfg.MCPServers, "old-server", "stale entry must be replaced")
+	assert.Equal(t, "http://192.168.127.1:4483/mcp", cfg.MCPServers["sandbox-tools"].URL)
+}
+
+func TestInjectOpenCodeMCP_PreservesExistingKeys(t *testing.T) {
+	t.Parallel()
+
+	rootfs := setupRootfs(t)
+	opencodeDir := filepath.Join(rootfs, sandboxHome, ".config", "opencode")
+	require.NoError(t, os.MkdirAll(opencodeDir, 0o755))
+	configPath := filepath.Join(opencodeDir, "opencode.json")
+
+	// Pre-populate with existing user config.
+	existing := `{"theme": "gruvbox", "editor": "nvim"}`
+	require.NoError(t, os.WriteFile(configPath, []byte(existing), 0o644))
+
+	err := injectOpenCodeMCP(rootfs, "192.168.127.1", 4483)
+	require.NoError(t, err)
+
+	data, err := os.ReadFile(configPath)
+	require.NoError(t, err)
+
+	var raw map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(data, &raw))
+
+	assert.Contains(t, raw, "theme")
+	assert.Contains(t, raw, "editor")
+	assert.Contains(t, raw, "mcp")
+
+	assert.JSONEq(t, `"gruvbox"`, string(raw["theme"]))
+	assert.JSONEq(t, `"nvim"`, string(raw["editor"]))
+}
+
+func TestInjectCodexMCP_PreservesExistingSections(t *testing.T) {
+	t.Parallel()
+
+	rootfs := setupRootfs(t)
+	codexDir := filepath.Join(rootfs, sandboxHome, ".codex")
+	require.NoError(t, os.MkdirAll(codexDir, 0o755))
+	configPath := filepath.Join(codexDir, "config.toml")
+
+	// Pre-populate with an existing TOML section.
+	existing := "[some_other_section]\nfoo = \"bar\"\n"
+	require.NoError(t, os.WriteFile(configPath, []byte(existing), 0o644))
+
+	err := injectCodexMCP(rootfs, "192.168.127.1", 4483)
+	require.NoError(t, err)
+
+	data, err := os.ReadFile(configPath)
+	require.NoError(t, err)
+
+	var parsed map[string]any
+	require.NoError(t, toml.Unmarshal(data, &parsed))
+
+	// Verify original section is preserved.
+	otherSection, ok := parsed["some_other_section"].(map[string]any)
+	require.True(t, ok, "some_other_section must be preserved")
+	assert.Equal(t, "bar", otherSection["foo"])
+
+	// Verify MCP section is present.
+	mcpServers, ok := parsed["mcp_servers"].(map[string]any)
+	require.True(t, ok, "mcp_servers must be present")
+
+	sandboxTools, ok := mcpServers["sandbox-tools"].(map[string]any)
+	require.True(t, ok, "sandbox-tools must be present")
+	assert.Equal(t, "http://192.168.127.1:4483/mcp", sandboxTools["url"])
 }
 
 // setupRootfs creates a minimal rootfs with /home/sandbox/ pre-created,
