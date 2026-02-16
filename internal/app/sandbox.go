@@ -13,6 +13,7 @@ import (
 
 	"github.com/stacklok/sandbox-agent/internal/domain/agent"
 	"github.com/stacklok/sandbox-agent/internal/domain/config"
+	"github.com/stacklok/sandbox-agent/internal/domain/egress"
 	"github.com/stacklok/sandbox-agent/internal/domain/progress"
 	"github.com/stacklok/sandbox-agent/internal/domain/session"
 	"github.com/stacklok/sandbox-agent/internal/domain/snapshot"
@@ -50,6 +51,12 @@ type RunOpts struct {
 
 	// ImageOverride overrides the agent's OCI image reference.
 	ImageOverride string
+
+	// EgressProfile overrides the agent's default egress profile (empty = use default).
+	EgressProfile string
+
+	// AllowHosts are additional egress hosts from CLI flags.
+	AllowHosts []egress.Host
 
 	// Snapshot holds snapshot isolation options.
 	Snapshot SnapshotOpts
@@ -185,6 +192,38 @@ func (s *SandboxRunner) Prepare(ctx context.Context, agentName string, opts RunO
 		"memory", ag.DefaultMemory,
 	)
 
+	// Resolve egress policy.
+	effectiveProfile := ag.DefaultEgressProfile
+	if opts.EgressProfile != "" {
+		effectiveProfile = egress.ProfileName(opts.EgressProfile)
+	}
+
+	egressPolicy, err := egress.Resolve(effectiveProfile, ag.EgressHosts)
+	if err != nil {
+		s.observer.Fail("Failed to resolve egress policy")
+		return nil, fmt.Errorf("resolving egress policy: %w", err)
+	}
+
+	// Collect extra hosts: config network hosts + agent override hosts + CLI hosts.
+	var extraHosts []egress.Host
+	extraHosts = append(extraHosts, config.ToEgressHosts(cfg.Network.AllowHosts)...)
+	if override.AllowHosts != nil {
+		extraHosts = append(extraHosts, config.ToEgressHosts(override.AllowHosts)...)
+	}
+	extraHosts = append(extraHosts, opts.AllowHosts...)
+
+	egressPolicy = egress.Merge(egressPolicy, extraHosts)
+
+	s.logger.Debug("resolved egress policy",
+		"profile", effectiveProfile,
+		"restricted", egressPolicy != nil,
+	)
+	if egressPolicy != nil {
+		s.logger.Debug("egress policy details",
+			"allowed_hosts", len(egressPolicy.AllowedHosts),
+		)
+	}
+
 	// 3. Collect env vars.
 	envVars := agent.ForwardEnv(ag.EnvForward, s.envProvider)
 	if len(envVars) > 0 {
@@ -237,6 +276,7 @@ func (s *SandboxRunner) Prepare(ctx context.Context, agentName string, opts RunO
 		SSHPort:       opts.SSHPort,
 		WorkspacePath: workspacePath,
 		EnvVars:       envVars,
+		EgressPolicy:  egressPolicy,
 	}
 
 	sandboxVM, err := s.vmRunner.Start(ctx, vmCfg)

@@ -5,7 +5,10 @@
 // All types are pure data with no I/O dependencies.
 package config
 
-import "github.com/stacklok/sandbox-agent/internal/domain/agent"
+import (
+	"github.com/stacklok/sandbox-agent/internal/domain/agent"
+	"github.com/stacklok/sandbox-agent/internal/domain/egress"
+)
 
 // LocalConfigFile is the per-workspace config file name.
 const LocalConfigFile = ".sandbox-agent.yaml"
@@ -17,6 +20,9 @@ type Config struct {
 
 	// Review configures workspace snapshot isolation.
 	Review ReviewConfig `yaml:"review"`
+
+	// Network configures egress networking.
+	Network NetworkConfig `yaml:"network"`
 
 	// Agents maps agent names to configuration overrides.
 	Agents map[string]AgentOverride `yaml:"agents"`
@@ -40,6 +46,22 @@ type DefaultsConfig struct {
 
 	// Memory is the default RAM in MiB.
 	Memory uint32 `yaml:"memory"`
+
+	// EgressProfile is the default egress restriction level.
+	EgressProfile string `yaml:"egress_profile,omitempty"`
+}
+
+// NetworkConfig configures egress networking.
+type NetworkConfig struct {
+	// AllowHosts are additional egress hosts to allow beyond the profile defaults.
+	AllowHosts []EgressHostConfig `yaml:"allow_hosts,omitempty"`
+}
+
+// EgressHostConfig is the YAML representation of an allowed egress host.
+type EgressHostConfig struct {
+	Name     string   `yaml:"name"`
+	Ports    []uint16 `yaml:"ports,omitempty"`
+	Protocol uint8    `yaml:"protocol,omitempty"`
 }
 
 // AgentOverride allows users to override built-in agent settings.
@@ -58,6 +80,12 @@ type AgentOverride struct {
 
 	// Memory overrides the RAM in MiB.
 	Memory uint32 `yaml:"memory,omitempty"`
+
+	// EgressProfile overrides the agent's default egress profile.
+	EgressProfile string `yaml:"egress_profile,omitempty"`
+
+	// AllowHosts are additional egress hosts for this agent.
+	AllowHosts []EgressHostConfig `yaml:"allow_hosts,omitempty"`
 }
 
 // MergeConfigs merges a local (per-workspace) config into a global config.
@@ -65,6 +93,8 @@ type AgentOverride struct {
 //   - Scalars (CPUs, Memory): local overrides global when non-zero.
 //   - Review.Enabled: local value is IGNORED (security constraint).
 //   - Review.ExcludePatterns: additive (global + local).
+//   - Defaults.EgressProfile: local can only tighten (not widen).
+//   - Network.AllowHosts: additive (global + local).
 //   - Agents map: local extends/overrides global per key.
 //
 // Returns global unchanged when local is nil.
@@ -83,12 +113,33 @@ func MergeConfigs(global, local *Config) *Config {
 		result.Defaults.Memory = local.Defaults.Memory
 	}
 
+	// EgressProfile: local can only tighten (use Stricter). If local tries
+	// to widen, keep global value.
+	if local.Defaults.EgressProfile != "" {
+		if result.Defaults.EgressProfile == "" {
+			result.Defaults.EgressProfile = local.Defaults.EgressProfile
+		} else {
+			result.Defaults.EgressProfile = string(egress.Stricter(
+				egress.ProfileName(result.Defaults.EgressProfile),
+				egress.ProfileName(local.Defaults.EgressProfile),
+			))
+		}
+	}
+
 	// Review.Enabled: local value is IGNORED (global preserved).
 	// Review.ExcludePatterns: additive.
 	if len(global.Review.ExcludePatterns) > 0 || len(local.Review.ExcludePatterns) > 0 {
 		result.Review.ExcludePatterns = append(
 			append([]string{}, global.Review.ExcludePatterns...),
 			local.Review.ExcludePatterns...,
+		)
+	}
+
+	// Network.AllowHosts: additive.
+	if len(global.Network.AllowHosts) > 0 || len(local.Network.AllowHosts) > 0 {
+		result.Network.AllowHosts = append(
+			append([]EgressHostConfig{}, global.Network.AllowHosts...),
+			local.Network.AllowHosts...,
 		)
 	}
 
@@ -144,5 +195,32 @@ func Merge(a agent.Agent, override AgentOverride, defaults DefaultsConfig) agent
 		result.DefaultMemory = defaults.Memory
 	}
 
+	// EgressProfile: override > agent default > global default > "standard"
+	if override.EgressProfile != "" {
+		result.DefaultEgressProfile = egress.ProfileName(override.EgressProfile)
+	}
+	if result.DefaultEgressProfile == "" && defaults.EgressProfile != "" {
+		result.DefaultEgressProfile = egress.ProfileName(defaults.EgressProfile)
+	}
+	if result.DefaultEgressProfile == "" {
+		result.DefaultEgressProfile = egress.ProfileStandard
+	}
+
 	return result
+}
+
+// ToEgressHosts converts config host entries to domain egress hosts.
+func ToEgressHosts(configs []EgressHostConfig) []egress.Host {
+	if len(configs) == 0 {
+		return nil
+	}
+	hosts := make([]egress.Host, len(configs))
+	for i, c := range configs {
+		hosts[i] = egress.Host{
+			Name:     c.Name,
+			Ports:    c.Ports,
+			Protocol: c.Protocol,
+		}
+	}
+	return hosts
 }

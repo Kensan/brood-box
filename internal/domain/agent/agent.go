@@ -4,7 +4,11 @@
 // Package agent defines the Agent value object and Registry interface.
 package agent
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/stacklok/sandbox-agent/internal/domain/egress"
+)
 
 // Agent describes a coding agent that can run inside a sandbox VM.
 type Agent struct {
@@ -26,6 +30,12 @@ type Agent struct {
 
 	// DefaultMemory is the default RAM in MiB for this agent.
 	DefaultMemory uint32
+
+	// DefaultEgressProfile is the default egress restriction level.
+	DefaultEgressProfile egress.ProfileName
+
+	// EgressHosts maps profile names to allowed host lists for this agent.
+	EgressHosts map[egress.ProfileName][]egress.Host
 }
 
 // Registry provides access to known agents by name.

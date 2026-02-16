@@ -103,6 +103,21 @@ func (r *PropolisRunner) Start(ctx context.Context, cfg domvm.VMConfig) (domvm.V
 		}),
 	}
 
+	// Add egress policy if specified.
+	if cfg.EgressPolicy != nil {
+		hosts := make([]propolis.EgressHost, len(cfg.EgressPolicy.AllowedHosts))
+		for i, h := range cfg.EgressPolicy.AllowedHosts {
+			hosts[i] = propolis.EgressHost{
+				Name:     h.Name,
+				Ports:    h.Ports,
+				Protocol: h.Protocol,
+			}
+		}
+		opts = append(opts, propolis.WithEgressPolicy(propolis.EgressPolicy{
+			AllowedHosts: hosts,
+		}))
+	}
+
 	// Add runner path if specified.
 	if r.runnerPath != "" {
 		opts = append(opts, propolis.WithRunnerPath(r.runnerPath))

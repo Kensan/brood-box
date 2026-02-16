@@ -8,34 +8,86 @@ import (
 	"sort"
 
 	domainagent "github.com/stacklok/sandbox-agent/internal/domain/agent"
+	"github.com/stacklok/sandbox-agent/internal/domain/egress"
 )
+
+// Common dev infrastructure hosts shared across agents at the standard profile.
+var devInfraHosts = []egress.Host{
+	{Name: "github.com", Ports: []uint16{443}},
+	{Name: "api.github.com", Ports: []uint16{443}},
+	{Name: "*.githubusercontent.com", Ports: []uint16{443}},
+	{Name: "registry.npmjs.org", Ports: []uint16{443}},
+	{Name: "*.npmjs.org", Ports: []uint16{443}},
+	{Name: "pypi.org", Ports: []uint16{443}},
+	{Name: "*.pypi.org", Ports: []uint16{443}},
+	{Name: "proxy.golang.org", Ports: []uint16{443}},
+	{Name: "sum.golang.org", Ports: []uint16{443}},
+	{Name: "*.docker.io", Ports: []uint16{443}},
+	{Name: "ghcr.io", Ports: []uint16{443}},
+	{Name: "*.sentry.io", Ports: []uint16{443}},
+	{Name: "sentry.io", Ports: []uint16{443}},
+}
 
 // builtinAgents returns the default set of built-in coding agents.
 func builtinAgents() map[string]domainagent.Agent {
+	claudeLockedHosts := []egress.Host{
+		{Name: "api.anthropic.com", Ports: []uint16{443}},
+		{Name: "*.anthropic.com", Ports: []uint16{443}},
+	}
+
+	codexLockedHosts := []egress.Host{
+		{Name: "api.openai.com", Ports: []uint16{443}},
+		{Name: "*.openai.com", Ports: []uint16{443}},
+	}
+
+	opencodeLockedHosts := []egress.Host{
+		{Name: "api.anthropic.com", Ports: []uint16{443}},
+		{Name: "*.anthropic.com", Ports: []uint16{443}},
+		{Name: "api.openai.com", Ports: []uint16{443}},
+		{Name: "*.openai.com", Ports: []uint16{443}},
+		{Name: "openrouter.ai", Ports: []uint16{443}},
+		{Name: "*.openrouter.ai", Ports: []uint16{443}},
+	}
+
 	return map[string]domainagent.Agent{
 		"claude-code": {
-			Name:          "claude-code",
-			Image:         "ghcr.io/stacklok/sandbox-agent/claude-code:latest",
-			Command:       []string{"claude"},
-			EnvForward:    []string{"ANTHROPIC_API_KEY", "CLAUDE_*"},
-			DefaultCPUs:   2,
-			DefaultMemory: 2048,
+			Name:                 "claude-code",
+			Image:                "ghcr.io/stacklok/sandbox-agent/claude-code:latest",
+			Command:              []string{"claude"},
+			EnvForward:           []string{"ANTHROPIC_API_KEY", "CLAUDE_*"},
+			DefaultCPUs:          2,
+			DefaultMemory:        2048,
+			DefaultEgressProfile: egress.ProfileStandard,
+			EgressHosts: map[egress.ProfileName][]egress.Host{
+				egress.ProfileLocked:   claudeLockedHosts,
+				egress.ProfileStandard: append(claudeLockedHosts, devInfraHosts...),
+			},
 		},
 		"codex": {
-			Name:          "codex",
-			Image:         "ghcr.io/stacklok/sandbox-agent/codex:latest",
-			Command:       []string{"codex"},
-			EnvForward:    []string{"OPENAI_API_KEY", "CODEX_*"},
-			DefaultCPUs:   2,
-			DefaultMemory: 2048,
+			Name:                 "codex",
+			Image:                "ghcr.io/stacklok/sandbox-agent/codex:latest",
+			Command:              []string{"codex"},
+			EnvForward:           []string{"OPENAI_API_KEY", "CODEX_*"},
+			DefaultCPUs:          2,
+			DefaultMemory:        2048,
+			DefaultEgressProfile: egress.ProfileStandard,
+			EgressHosts: map[egress.ProfileName][]egress.Host{
+				egress.ProfileLocked:   codexLockedHosts,
+				egress.ProfileStandard: append(codexLockedHosts, devInfraHosts...),
+			},
 		},
 		"opencode": {
-			Name:          "opencode",
-			Image:         "ghcr.io/stacklok/sandbox-agent/opencode:latest",
-			Command:       []string{"opencode"},
-			EnvForward:    []string{"ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY", "OPENCODE_*"},
-			DefaultCPUs:   2,
-			DefaultMemory: 2048,
+			Name:                 "opencode",
+			Image:                "ghcr.io/stacklok/sandbox-agent/opencode:latest",
+			Command:              []string{"opencode"},
+			EnvForward:           []string{"ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY", "OPENCODE_*"},
+			DefaultCPUs:          2,
+			DefaultMemory:        2048,
+			DefaultEgressProfile: egress.ProfileStandard,
+			EgressHosts: map[egress.ProfileName][]egress.Host{
+				egress.ProfileLocked:   opencodeLockedHosts,
+				egress.ProfileStandard: append(opencodeLockedHosts, devInfraHosts...),
+			},
 		},
 	}
 }

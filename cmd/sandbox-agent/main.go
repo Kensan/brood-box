@@ -20,6 +20,7 @@ import (
 	"github.com/stacklok/sandbox-agent/internal/app"
 	"github.com/stacklok/sandbox-agent/internal/domain/agent"
 	domainconfig "github.com/stacklok/sandbox-agent/internal/domain/config"
+	"github.com/stacklok/sandbox-agent/internal/domain/egress"
 	"github.com/stacklok/sandbox-agent/internal/domain/progress"
 	"github.com/stacklok/sandbox-agent/internal/domain/snapshot"
 	infraagent "github.com/stacklok/sandbox-agent/internal/infra/agent"
@@ -55,16 +56,18 @@ func main() {
 
 func rootCmd() *cobra.Command {
 	var (
-		cpus     uint32
-		memory   uint32
-		wsPath   string
-		sshPort  uint16
-		cfgPath  string
-		image    string
-		debug    bool
-		noReview bool
-		excludes []string
-		logFile  string
+		cpus          uint32
+		memory        uint32
+		wsPath        string
+		sshPort       uint16
+		cfgPath       string
+		image         string
+		debug         bool
+		noReview      bool
+		excludes      []string
+		logFile       string
+		egressProfile string
+		allowHosts    []string
 	)
 
 	cmd := &cobra.Command{
@@ -84,21 +87,25 @@ Example:
   sandbox-agent codex --cpus 4 --memory 4096
   sandbox-agent opencode --workspace /path/to/project
   sandbox-agent claude-code --no-review
-  sandbox-agent claude-code --exclude "*.log" --exclude "tmp/"`,
+  sandbox-agent claude-code --exclude "*.log" --exclude "tmp/"
+  sandbox-agent claude-code --egress-profile locked
+  sandbox-agent claude-code --allow-host "custom-api.example.com:443"`,
 		Args:    cobra.ExactArgs(1),
 		Version: fmt.Sprintf("%s (%s)", version.Version, version.Commit),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return run(cmd.Context(), args[0], runFlags{
-				cpus:      cpus,
-				memory:    memory,
-				workspace: wsPath,
-				sshPort:   sshPort,
-				cfgPath:   cfgPath,
-				image:     image,
-				debug:     debug,
-				noReview:  noReview,
-				excludes:  excludes,
-				logFile:   logFile,
+				cpus:          cpus,
+				memory:        memory,
+				workspace:     wsPath,
+				sshPort:       sshPort,
+				cfgPath:       cfgPath,
+				image:         image,
+				debug:         debug,
+				noReview:      noReview,
+				excludes:      excludes,
+				logFile:       logFile,
+				egressProfile: egressProfile,
+				allowHosts:    allowHosts,
 			})
 		},
 		SilenceUsage:  true,
@@ -115,6 +122,8 @@ Example:
 	cmd.Flags().BoolVar(&noReview, "no-review", false, "Disable workspace snapshot isolation (mount workspace directly)")
 	cmd.Flags().StringSliceVar(&excludes, "exclude", nil, "Additional exclude patterns for workspace snapshot (repeatable)")
 	cmd.Flags().StringVar(&logFile, "log-file", "", "Override log file path (default: ~/.config/sandbox-agent/logs/sandbox-agent.log)")
+	cmd.Flags().StringVar(&egressProfile, "egress-profile", "", "Egress restriction level: permissive, standard, locked (default: agent's built-in default)")
+	cmd.Flags().StringSliceVar(&allowHosts, "allow-host", nil, "Additional allowed egress host, format: hostname[:port] (repeatable)")
 
 	// Add list subcommand.
 	cmd.AddCommand(listCmd())
@@ -138,16 +147,18 @@ func listCmd() *cobra.Command {
 }
 
 type runFlags struct {
-	cpus      uint32
-	memory    uint32
-	workspace string
-	sshPort   uint16
-	cfgPath   string
-	image     string
-	debug     bool
-	noReview  bool
-	excludes  []string
-	logFile   string
+	cpus          uint32
+	memory        uint32
+	workspace     string
+	sshPort       uint16
+	cfgPath       string
+	image         string
+	debug         bool
+	noReview      bool
+	excludes      []string
+	logFile       string
+	egressProfile string
+	allowHosts    []string
 }
 
 func run(parentCtx context.Context, agentName string, flags runFlags) error {
@@ -202,6 +213,14 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 	}
 	if localCfg != nil && localCfg.Review.Enabled != nil {
 		logger.Warn("review.enabled in local config is ignored for security — use --no-review or global config")
+	}
+	if localCfg != nil && localCfg.Defaults.EgressProfile != "" {
+		globalProfile := egress.ProfileName(cfg.Defaults.EgressProfile)
+		localProfile := egress.ProfileName(localCfg.Defaults.EgressProfile)
+		if globalProfile.IsValid() && localProfile.IsValid() && egress.Stricter(globalProfile, localProfile) == globalProfile {
+			logger.Warn("egress_profile in local config cannot widen global — keeping global profile",
+				"global", globalProfile, "local", localProfile)
+		}
 	}
 	cfg = domainconfig.MergeConfigs(cfg, localCfg)
 
@@ -277,6 +296,25 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 		deps.Differ = diff.NewFSDiffer()
 	}
 
+	// Validate and parse egress flags.
+	if flags.egressProfile != "" && !egress.ProfileName(flags.egressProfile).IsValid() {
+		return fmt.Errorf("invalid --egress-profile %q: valid values are %v",
+			flags.egressProfile, egress.ValidProfiles())
+	}
+
+	var parsedAllowHosts []egress.Host
+	for _, h := range flags.allowHosts {
+		parsed, parseErr := egress.ParseHostFlag(h)
+		if parseErr != nil {
+			return fmt.Errorf("invalid --allow-host %q: %w", h, parseErr)
+		}
+		parsedAllowHosts = append(parsedAllowHosts, parsed)
+	}
+
+	if flags.egressProfile != "" {
+		logger.Info("egress profile override", "profile", flags.egressProfile)
+	}
+
 	runner := app.NewSandboxRunner(deps)
 
 	opts := app.RunOpts{
@@ -285,6 +323,8 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 		Workspace:     ws,
 		SSHPort:       flags.sshPort,
 		ImageOverride: flags.image,
+		EgressProfile: flags.egressProfile,
+		AllowHosts:    parsedAllowHosts,
 		Snapshot: app.SnapshotOpts{
 			Enabled:         reviewEnabled,
 			SnapshotMatcher: snapshotMatcher,

@@ -4,7 +4,11 @@
 // Package vm defines domain interfaces and types for sandbox VM management.
 package vm
 
-import "context"
+import (
+	"context"
+
+	"github.com/stacklok/sandbox-agent/internal/domain/egress"
+)
 
 // VMConfig holds the parameters needed to start a sandbox VM.
 type VMConfig struct {
@@ -29,6 +33,9 @@ type VMConfig struct {
 
 	// EnvVars are environment variables to inject into the VM.
 	EnvVars map[string]string
+
+	// EgressPolicy restricts outbound VM traffic. Nil means no restrictions.
+	EgressPolicy *egress.Policy
 }
 
 // VMRunner creates and manages sandbox VMs.

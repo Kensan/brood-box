@@ -17,6 +17,7 @@ import (
 
 	"github.com/stacklok/sandbox-agent/internal/domain/agent"
 	"github.com/stacklok/sandbox-agent/internal/domain/config"
+	"github.com/stacklok/sandbox-agent/internal/domain/egress"
 	"github.com/stacklok/sandbox-agent/internal/domain/session"
 	"github.com/stacklok/sandbox-agent/internal/domain/snapshot"
 	domvm "github.com/stacklok/sandbox-agent/internal/domain/vm"
@@ -204,9 +205,10 @@ func TestSandboxRunner_Run(t *testing.T) {
 	})
 
 	err := runner.Run(context.Background(), "test-agent", RunOpts{
-		Workspace: "/tmp/workspace",
-		SSHPort:   2222,
-		Terminal:  &mockTerminal{},
+		Workspace:     "/tmp/workspace",
+		SSHPort:       2222,
+		EgressProfile: string(egress.ProfilePermissive),
+		Terminal:      &mockTerminal{},
 	})
 
 	require.NoError(t, err)
@@ -275,6 +277,7 @@ func TestSandboxRunner_Run_CLIOverrides(t *testing.T) {
 		CPUs:          4,
 		Memory:        8192,
 		ImageOverride: "custom:v2",
+		EgressProfile: string(egress.ProfilePermissive),
 		Terminal:      &mockTerminal{},
 	})
 
@@ -322,9 +325,10 @@ func TestSandboxRunner_Run_ReviewEnabled_UsesSnapshotPath(t *testing.T) {
 	})
 
 	err := runner.Run(context.Background(), "test", RunOpts{
-		Workspace: workspaceDir,
-		Snapshot:  SnapshotOpts{Enabled: true},
-		Terminal:  &mockTerminal{},
+		Workspace:     workspaceDir,
+		EgressProfile: string(egress.ProfilePermissive),
+		Snapshot:      SnapshotOpts{Enabled: true},
+		Terminal:      &mockTerminal{},
 	})
 	require.NoError(t, err)
 
@@ -355,9 +359,10 @@ func TestSandboxRunner_Run_ReviewDisabled_UsesOriginalPath(t *testing.T) {
 	})
 
 	err := runner.Run(context.Background(), "test", RunOpts{
-		Workspace: "/my/workspace",
-		Snapshot:  SnapshotOpts{Enabled: false},
-		Terminal:  &mockTerminal{},
+		Workspace:     "/my/workspace",
+		EgressProfile: string(egress.ProfilePermissive),
+		Snapshot:      SnapshotOpts{Enabled: false},
+		Terminal:      &mockTerminal{},
 	})
 	require.NoError(t, err)
 
@@ -408,9 +413,10 @@ func TestSandboxRunner_Run_ReviewWithChanges_FlushesAccepted(t *testing.T) {
 	})
 
 	err := runner.Run(context.Background(), "test", RunOpts{
-		Workspace: workspaceDir,
-		Snapshot:  SnapshotOpts{Enabled: true},
-		Terminal:  &mockTerminal{},
+		Workspace:     workspaceDir,
+		EgressProfile: string(egress.ProfilePermissive),
+		Snapshot:      SnapshotOpts{Enabled: true},
+		Terminal:      &mockTerminal{},
 	})
 	require.NoError(t, err)
 
@@ -456,9 +462,10 @@ func TestSandboxRunner_Run_ReviewEmptyDiff_SkipsReview(t *testing.T) {
 	})
 
 	err := runner.Run(context.Background(), "test", RunOpts{
-		Workspace: workspaceDir,
-		Snapshot:  SnapshotOpts{Enabled: true},
-		Terminal:  &mockTerminal{},
+		Workspace:     workspaceDir,
+		EgressProfile: string(egress.ProfilePermissive),
+		Snapshot:      SnapshotOpts{Enabled: true},
+		Terminal:      &mockTerminal{},
 	})
 	require.NoError(t, err)
 
@@ -493,9 +500,10 @@ func TestSandboxRunner_Run_SnapshotCreationFails(t *testing.T) {
 	})
 
 	err := runner.Run(context.Background(), "test", RunOpts{
-		Workspace: t.TempDir(),
-		Snapshot:  SnapshotOpts{Enabled: true},
-		Terminal:  &mockTerminal{},
+		Workspace:     t.TempDir(),
+		EgressProfile: string(egress.ProfilePermissive),
+		Snapshot:      SnapshotOpts{Enabled: true},
+		Terminal:      &mockTerminal{},
 	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "creating workspace snapshot")
@@ -544,9 +552,10 @@ func TestSandboxRunner_Run_VMStoppedBeforeReview(t *testing.T) {
 	})
 
 	err := runner.Run(context.Background(), "test", RunOpts{
-		Workspace: workspaceDir,
-		Snapshot:  SnapshotOpts{Enabled: true},
-		Terminal:  &mockTerminal{},
+		Workspace:     workspaceDir,
+		EgressProfile: string(egress.ProfilePermissive),
+		Snapshot:      SnapshotOpts{Enabled: true},
+		Terminal:      &mockTerminal{},
 	})
 	require.NoError(t, err)
 
@@ -590,8 +599,9 @@ func TestSandboxRunner_Run_NilMatcherDefaultsToNop(t *testing.T) {
 
 	// Pass nil matchers — they should default to NopMatcher.
 	err := runner.Run(context.Background(), "test", RunOpts{
-		Workspace: workspaceDir,
-		Terminal:  &mockTerminal{},
+		Workspace:     workspaceDir,
+		EgressProfile: string(egress.ProfilePermissive),
+		Terminal:      &mockTerminal{},
 		Snapshot: SnapshotOpts{
 			Enabled:         true,
 			SnapshotMatcher: nil,
@@ -672,8 +682,9 @@ func TestSandboxRunner_Prepare_Success(t *testing.T) {
 	})
 
 	sb, err := runner.Prepare(context.Background(), "test-agent", RunOpts{
-		Workspace: workspaceDir,
-		Snapshot:  SnapshotOpts{Enabled: true},
+		Workspace:     workspaceDir,
+		EgressProfile: string(egress.ProfilePermissive),
+		Snapshot:      SnapshotOpts{Enabled: true},
 	})
 	require.NoError(t, err)
 	defer func() { _ = sb.Cleanup() }()
@@ -906,8 +917,9 @@ func TestSandboxRunner_LifecycleEndToEnd(t *testing.T) {
 
 	// 1. Prepare
 	sb, err := runner.Prepare(context.Background(), "test-agent", RunOpts{
-		Workspace: workspaceDir,
-		Snapshot:  SnapshotOpts{Enabled: true},
+		Workspace:     workspaceDir,
+		EgressProfile: string(egress.ProfilePermissive),
+		Snapshot:      SnapshotOpts{Enabled: true},
 	})
 	require.NoError(t, err)
 	defer func() { _ = sb.Cleanup() }()
