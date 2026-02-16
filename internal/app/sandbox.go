@@ -93,8 +93,15 @@ func (sb *Sandbox) Cleanup() error {
 	return nil
 }
 
-// SandboxRunner orchestrates the full sandbox VM lifecycle:
-// resolve agent, load config, collect env, start VM, run terminal, stop VM.
+// SandboxRunner orchestrates the full sandbox VM lifecycle.
+//
+// Two usage patterns are supported:
+//
+// Convenience (CLI): Call Run() for sequential prepare->attach->stop->review->cleanup.
+//
+// Lifecycle (HTTP server, custom control): Call Prepare(), Attach(), Stop(),
+// Changes(), Flush(), and Sandbox.Cleanup() individually. This allows the caller
+// to control terminal attachment, async review workflows, and concurrent sessions.
 type SandboxRunner struct {
 	registry        agent.Registry
 	vmRunner        domvm.VMRunner
@@ -297,7 +304,9 @@ func (s *SandboxRunner) Flush(sb *Sandbox, accepted []snapshot.FileChange) error
 	return nil
 }
 
-// Run executes the full sandbox lifecycle for the named agent.
+// Run executes the full sandbox lifecycle for the named agent:
+// Prepare -> Attach -> Stop -> review/flush -> Cleanup.
+// opts.Terminal must be set to provide I/O streams for the session.
 func (s *SandboxRunner) Run(ctx context.Context, agentName string, opts RunOpts) error {
 	sb, err := s.Prepare(ctx, agentName, opts)
 	if err != nil {
