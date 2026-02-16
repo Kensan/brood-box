@@ -16,7 +16,6 @@ import (
 
 	"github.com/stacklok/sandbox-agent/internal/domain/agent"
 	"github.com/stacklok/sandbox-agent/internal/domain/config"
-	infraconfig "github.com/stacklok/sandbox-agent/internal/infra/config"
 	"github.com/stacklok/sandbox-agent/internal/infra/diff"
 	"github.com/stacklok/sandbox-agent/internal/infra/exclude"
 	"github.com/stacklok/sandbox-agent/internal/infra/review"
@@ -54,7 +53,7 @@ type SandboxDeps struct {
 	Registry    agent.Registry
 	VMRunner    vm.VMRunner
 	Terminal    infrassh.TerminalSession
-	CfgLoader   *infraconfig.Loader
+	Config      *config.Config
 	EnvProvider agent.EnvProvider
 	Logger      *slog.Logger
 
@@ -79,7 +78,7 @@ type SandboxRunner struct {
 	registry        agent.Registry
 	vmRunner        vm.VMRunner
 	terminal        infrassh.TerminalSession
-	cfgLoader       *infraconfig.Loader
+	config          *config.Config
 	envProvider     agent.EnvProvider
 	logger          *slog.Logger
 	workspaceCloner workspace.WorkspaceCloner
@@ -97,7 +96,7 @@ func NewSandboxRunner(deps SandboxDeps) *SandboxRunner {
 		registry:        deps.Registry,
 		vmRunner:        deps.VMRunner,
 		terminal:        deps.Terminal,
-		cfgLoader:       deps.CfgLoader,
+		config:          deps.Config,
 		envProvider:     deps.EnvProvider,
 		logger:          deps.Logger,
 		workspaceCloner: deps.WorkspaceCloner,
@@ -118,10 +117,10 @@ func (s *SandboxRunner) Run(ctx context.Context, agentName string, opts RunOpts)
 		return fmt.Errorf("resolving agent: %w", err)
 	}
 
-	// 2. Load config and apply overrides.
-	cfg, err := s.cfgLoader.Load()
-	if err != nil {
-		return fmt.Errorf("loading config: %w", err)
+	// 2. Apply config overrides.
+	cfg := s.config
+	if cfg == nil {
+		cfg = &config.Config{}
 	}
 
 	override := config.AgentOverride{}

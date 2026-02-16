@@ -82,6 +82,61 @@ func TestLoader_Load_InvalidYAML(t *testing.T) {
 	assert.Contains(t, err.Error(), "parsing config file")
 }
 
+func TestLoadFromPath_MissingFile(t *testing.T) {
+	t.Parallel()
+	cfg, err := LoadFromPath("/nonexistent/path/config.yaml")
+	require.NoError(t, err)
+	assert.Nil(t, cfg)
+}
+
+func TestLoadFromPath_ValidYAML(t *testing.T) {
+	t.Parallel()
+
+	content := `
+defaults:
+  cpus: 8
+  memory: 8192
+review:
+  exclude_patterns:
+    - "*.tmp"
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".sandbox-agent.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
+
+	cfg, err := LoadFromPath(path)
+	require.NoError(t, err)
+	require.NotNil(t, cfg)
+	assert.Equal(t, uint32(8), cfg.Defaults.CPUs)
+	assert.Equal(t, uint32(8192), cfg.Defaults.Memory)
+	assert.Equal(t, []string{"*.tmp"}, cfg.Review.ExcludePatterns)
+}
+
+func TestLoadFromPath_EmptyFile(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".sandbox-agent.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(""), 0o644))
+
+	cfg, err := LoadFromPath(path)
+	require.NoError(t, err)
+	require.NotNil(t, cfg)
+	assert.Zero(t, cfg.Defaults.CPUs)
+}
+
+func TestLoadFromPath_InvalidYAML(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".sandbox-agent.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("{{invalid yaml"), 0o644))
+
+	_, err := LoadFromPath(path)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "parsing config file")
+}
+
 func TestLoader_DefaultPath(t *testing.T) {
 	t.Parallel()
 	loader := NewLoader("")

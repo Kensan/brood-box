@@ -32,6 +32,139 @@ func TestReviewConfig_Explicit(t *testing.T) {
 	assert.Equal(t, []string{"*.log", "tmp/"}, cfg.ExcludePatterns)
 }
 
+func boolPtr(b bool) *bool { return &b }
+
+func TestMergeConfigs(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		global *Config
+		local  *Config
+		want   *Config
+	}{
+		{
+			name:   "nil local returns global unchanged",
+			global: &Config{Defaults: DefaultsConfig{CPUs: 2, Memory: 1024}},
+			local:  nil,
+			want:   &Config{Defaults: DefaultsConfig{CPUs: 2, Memory: 1024}},
+		},
+		{
+			name:   "local scalars override global when non-zero",
+			global: &Config{Defaults: DefaultsConfig{CPUs: 2, Memory: 1024}},
+			local:  &Config{Defaults: DefaultsConfig{CPUs: 4}},
+			want:   &Config{Defaults: DefaultsConfig{CPUs: 4, Memory: 1024}},
+		},
+		{
+			name: "review.enabled from local is ignored",
+			global: &Config{
+				Review: ReviewConfig{Enabled: boolPtr(true)},
+			},
+			local: &Config{
+				Review: ReviewConfig{Enabled: boolPtr(false)},
+			},
+			want: &Config{
+				Review: ReviewConfig{Enabled: boolPtr(true)},
+			},
+		},
+		{
+			name: "exclude patterns are additive",
+			global: &Config{
+				Review: ReviewConfig{ExcludePatterns: []string{"*.log"}},
+			},
+			local: &Config{
+				Review: ReviewConfig{ExcludePatterns: []string{"tmp/"}},
+			},
+			want: &Config{
+				Review: ReviewConfig{ExcludePatterns: []string{"*.log", "tmp/"}},
+			},
+		},
+		{
+			name: "agents map merge — local extends global",
+			global: &Config{
+				Agents: map[string]AgentOverride{
+					"a": {Image: "img-a"},
+				},
+			},
+			local: &Config{
+				Agents: map[string]AgentOverride{
+					"b": {Image: "img-b"},
+				},
+			},
+			want: &Config{
+				Agents: map[string]AgentOverride{
+					"a": {Image: "img-a"},
+					"b": {Image: "img-b"},
+				},
+			},
+		},
+		{
+			name: "agents map merge — local overrides global per key",
+			global: &Config{
+				Agents: map[string]AgentOverride{
+					"a": {Image: "old"},
+				},
+			},
+			local: &Config{
+				Agents: map[string]AgentOverride{
+					"a": {Image: "new"},
+				},
+			},
+			want: &Config{
+				Agents: map[string]AgentOverride{
+					"a": {Image: "new"},
+				},
+			},
+		},
+		{
+			name:   "local agents into nil global agents",
+			global: &Config{},
+			local: &Config{
+				Agents: map[string]AgentOverride{
+					"x": {Image: "img-x"},
+				},
+			},
+			want: &Config{
+				Agents: map[string]AgentOverride{
+					"x": {Image: "img-x"},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := MergeConfigs(tt.global, tt.local)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestMergeConfigs_DoesNotMutateGlobal(t *testing.T) {
+	t.Parallel()
+
+	global := &Config{
+		Agents: map[string]AgentOverride{
+			"a": {Image: "original"},
+		},
+		Review: ReviewConfig{ExcludePatterns: []string{"*.log"}},
+	}
+	local := &Config{
+		Agents: map[string]AgentOverride{
+			"b": {Image: "new"},
+		},
+		Review: ReviewConfig{ExcludePatterns: []string{"tmp/"}},
+	}
+
+	_ = MergeConfigs(global, local)
+
+	// Global should be unchanged.
+	assert.Len(t, global.Agents, 1)
+	assert.Equal(t, "original", global.Agents["a"].Image)
+	assert.Equal(t, []string{"*.log"}, global.Review.ExcludePatterns)
+}
+
 func TestMerge(t *testing.T) {
 	t.Parallel()
 

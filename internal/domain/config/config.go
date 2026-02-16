@@ -7,6 +7,9 @@ package config
 
 import "github.com/stacklok/sandbox-agent/internal/domain/agent"
 
+// LocalConfigFile is the per-workspace config file name.
+const LocalConfigFile = ".sandbox-agent.yaml"
+
 // Config is the top-level user configuration.
 type Config struct {
 	// Defaults specifies default resource limits.
@@ -55,6 +58,58 @@ type AgentOverride struct {
 
 	// Memory overrides the RAM in MiB.
 	Memory uint32 `yaml:"memory,omitempty"`
+}
+
+// MergeConfigs merges a local (per-workspace) config into a global config.
+// Rules:
+//   - Scalars (CPUs, Memory): local overrides global when non-zero.
+//   - Review.Enabled: local value is IGNORED (security constraint).
+//   - Review.ExcludePatterns: additive (global + local).
+//   - Agents map: local extends/overrides global per key.
+//
+// Returns global unchanged when local is nil.
+func MergeConfigs(global, local *Config) *Config {
+	if local == nil {
+		return global
+	}
+
+	result := *global
+
+	// Scalars: local overrides global when non-zero.
+	if local.Defaults.CPUs > 0 {
+		result.Defaults.CPUs = local.Defaults.CPUs
+	}
+	if local.Defaults.Memory > 0 {
+		result.Defaults.Memory = local.Defaults.Memory
+	}
+
+	// Review.Enabled: local value is IGNORED (global preserved).
+	// Review.ExcludePatterns: additive.
+	if len(global.Review.ExcludePatterns) > 0 || len(local.Review.ExcludePatterns) > 0 {
+		result.Review.ExcludePatterns = append(
+			append([]string{}, global.Review.ExcludePatterns...),
+			local.Review.ExcludePatterns...,
+		)
+	}
+
+	// Agents: local extends/overrides global per key.
+	if len(local.Agents) > 0 {
+		if result.Agents == nil {
+			result.Agents = make(map[string]AgentOverride)
+		} else {
+			// Copy the global map to avoid mutating the original.
+			merged := make(map[string]AgentOverride, len(result.Agents)+len(local.Agents))
+			for k, v := range result.Agents {
+				merged[k] = v
+			}
+			result.Agents = merged
+		}
+		for k, v := range local.Agents {
+			result.Agents[k] = v
+		}
+	}
+
+	return &result
 }
 
 // Merge combines an agent definition with user overrides and defaults.

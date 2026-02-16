@@ -62,10 +62,11 @@ By default, the workspace is mounted as a COW snapshot. After the agent finishes
 - `--no-review` — Disable snapshot isolation, mount workspace directly
 - `--exclude "pattern"` — Additional gitignore-style exclude patterns (repeatable)
 - `.sandboxignore` — Per-workspace exclude file (gitignore syntax) in workspace root
-- Security patterns (`.env*`, `*.pem`, `.ssh/`, etc.) are **non-overridable** — cannot be negated
+- `.sandbox-agent.yaml` — Per-workspace config file (merged into global config; `review.enabled` is **ignored** for security)
+- Security patterns (`.env*`, `*.pem`, `.ssh/`, `.sandbox-agent.yaml`, etc.) are **non-overridable** — cannot be negated
 - Performance patterns (`node_modules/`, `vendor/`, etc.) can be negated in `.sandboxignore`
 
-Config file (`~/.config/sandbox-agent/config.yaml`):
+Global config (`~/.config/sandbox-agent/config.yaml`):
 ```yaml
 review:
   enabled: true

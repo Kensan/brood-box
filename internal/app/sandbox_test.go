@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/stacklok/sandbox-agent/internal/domain/agent"
+	"github.com/stacklok/sandbox-agent/internal/domain/config"
 	"github.com/stacklok/sandbox-agent/internal/domain/snapshot"
-	infraconfig "github.com/stacklok/sandbox-agent/internal/infra/config"
 	"github.com/stacklok/sandbox-agent/internal/infra/exclude"
 	infrassh "github.com/stacklok/sandbox-agent/internal/infra/ssh"
 	"github.com/stacklok/sandbox-agent/internal/infra/vm"
@@ -156,11 +156,6 @@ func testLogger() *slog.Logger {
 func TestSandboxRunner_Run(t *testing.T) {
 	t.Parallel()
 
-	// Write a minimal config file.
-	dir := t.TempDir()
-	cfgPath := dir + "/config.yaml"
-	require.NoError(t, os.WriteFile(cfgPath, []byte("defaults:\n  cpus: 2\n  memory: 2048\n"), 0o644))
-
 	testAgent := agent.Agent{
 		Name:          "test-agent",
 		Image:         "test-image:latest",
@@ -185,7 +180,7 @@ func TestSandboxRunner_Run(t *testing.T) {
 		}},
 		VMRunner:    vmRunner,
 		Terminal:    terminal,
-		CfgLoader:   infraconfig.NewLoader(cfgPath),
+		Config:      &config.Config{},
 		EnvProvider: &mockEnvProvider{vars: []string{"TEST_KEY=secret123", "OTHER=foo"}},
 		Logger:      testLogger(),
 	})
@@ -218,15 +213,11 @@ func TestSandboxRunner_Run(t *testing.T) {
 func TestSandboxRunner_Run_AgentNotFound(t *testing.T) {
 	t.Parallel()
 
-	dir := t.TempDir()
-	cfgPath := dir + "/config.yaml"
-	require.NoError(t, os.WriteFile(cfgPath, []byte(""), 0o644))
-
 	runner := NewSandboxRunner(SandboxDeps{
 		Registry:    &mockRegistry{agents: map[string]agent.Agent{}},
 		VMRunner:    &mockVMRunner{},
 		Terminal:    &mockTerminal{},
-		CfgLoader:   infraconfig.NewLoader(cfgPath),
+		Config:      &config.Config{},
 		EnvProvider: &mockEnvProvider{},
 		Logger:      testLogger(),
 	})
@@ -238,10 +229,6 @@ func TestSandboxRunner_Run_AgentNotFound(t *testing.T) {
 
 func TestSandboxRunner_Run_CLIOverrides(t *testing.T) {
 	t.Parallel()
-
-	dir := t.TempDir()
-	cfgPath := dir + "/config.yaml"
-	require.NoError(t, os.WriteFile(cfgPath, []byte(""), 0o644))
 
 	testAgent := agent.Agent{
 		Name:          "test",
@@ -258,7 +245,7 @@ func TestSandboxRunner_Run_CLIOverrides(t *testing.T) {
 		Registry:    &mockRegistry{agents: map[string]agent.Agent{"test": testAgent}},
 		VMRunner:    vmRunner,
 		Terminal:    &mockTerminal{},
-		CfgLoader:   infraconfig.NewLoader(cfgPath),
+		Config:      &config.Config{},
 		EnvProvider: &mockEnvProvider{},
 		Logger:      testLogger(),
 	})
@@ -277,10 +264,6 @@ func TestSandboxRunner_Run_CLIOverrides(t *testing.T) {
 
 func TestSandboxRunner_Run_ReviewEnabled_UsesSnapshotPath(t *testing.T) {
 	t.Parallel()
-
-	dir := t.TempDir()
-	cfgPath := dir + "/config.yaml"
-	require.NoError(t, os.WriteFile(cfgPath, []byte(""), 0o644))
 
 	// Create a real workspace dir and snapshot dir.
 	workspaceDir := t.TempDir()
@@ -306,7 +289,7 @@ func TestSandboxRunner_Run_ReviewEnabled_UsesSnapshotPath(t *testing.T) {
 		Registry:        &mockRegistry{agents: map[string]agent.Agent{"test": testAgent}},
 		VMRunner:        vmRunner,
 		Terminal:        &mockTerminal{},
-		CfgLoader:       infraconfig.NewLoader(cfgPath),
+		Config:          &config.Config{},
 		EnvProvider:     &mockEnvProvider{},
 		Logger:          testLogger(),
 		WorkspaceCloner: cloner,
@@ -329,10 +312,6 @@ func TestSandboxRunner_Run_ReviewEnabled_UsesSnapshotPath(t *testing.T) {
 func TestSandboxRunner_Run_ReviewDisabled_UsesOriginalPath(t *testing.T) {
 	t.Parallel()
 
-	dir := t.TempDir()
-	cfgPath := dir + "/config.yaml"
-	require.NoError(t, os.WriteFile(cfgPath, []byte(""), 0o644))
-
 	testAgent := agent.Agent{
 		Name:    "test",
 		Image:   "img:latest",
@@ -346,7 +325,7 @@ func TestSandboxRunner_Run_ReviewDisabled_UsesOriginalPath(t *testing.T) {
 		Registry:    &mockRegistry{agents: map[string]agent.Agent{"test": testAgent}},
 		VMRunner:    vmRunner,
 		Terminal:    &mockTerminal{},
-		CfgLoader:   infraconfig.NewLoader(cfgPath),
+		Config:      &config.Config{},
 		EnvProvider: &mockEnvProvider{},
 		Logger:      testLogger(),
 	})
@@ -363,10 +342,6 @@ func TestSandboxRunner_Run_ReviewDisabled_UsesOriginalPath(t *testing.T) {
 
 func TestSandboxRunner_Run_ReviewWithChanges_FlushesAccepted(t *testing.T) {
 	t.Parallel()
-
-	dir := t.TempDir()
-	cfgPath := dir + "/config.yaml"
-	require.NoError(t, os.WriteFile(cfgPath, []byte(""), 0o644))
 
 	workspaceDir := t.TempDir()
 	snapshotDir := t.TempDir()
@@ -397,7 +372,7 @@ func TestSandboxRunner_Run_ReviewWithChanges_FlushesAccepted(t *testing.T) {
 		Registry:        &mockRegistry{agents: map[string]agent.Agent{"test": testAgent}},
 		VMRunner:        vmRunner,
 		Terminal:        &mockTerminal{},
-		CfgLoader:       infraconfig.NewLoader(cfgPath),
+		Config:          &config.Config{},
 		EnvProvider:     &mockEnvProvider{},
 		Logger:          testLogger(),
 		WorkspaceCloner: cloner,
@@ -421,10 +396,6 @@ func TestSandboxRunner_Run_ReviewWithChanges_FlushesAccepted(t *testing.T) {
 func TestSandboxRunner_Run_ReviewEmptyDiff_SkipsReview(t *testing.T) {
 	t.Parallel()
 
-	dir := t.TempDir()
-	cfgPath := dir + "/config.yaml"
-	require.NoError(t, os.WriteFile(cfgPath, []byte(""), 0o644))
-
 	workspaceDir := t.TempDir()
 	snapshotDir := t.TempDir()
 
@@ -447,7 +418,7 @@ func TestSandboxRunner_Run_ReviewEmptyDiff_SkipsReview(t *testing.T) {
 		Registry:        &mockRegistry{agents: map[string]agent.Agent{"test": testAgent}},
 		VMRunner:        &mockVMRunner{vm: mvm},
 		Terminal:        &mockTerminal{},
-		CfgLoader:       infraconfig.NewLoader(cfgPath),
+		Config:          &config.Config{},
 		EnvProvider:     &mockEnvProvider{},
 		Logger:          testLogger(),
 		WorkspaceCloner: cloner,
@@ -469,10 +440,6 @@ func TestSandboxRunner_Run_ReviewEmptyDiff_SkipsReview(t *testing.T) {
 func TestSandboxRunner_Run_SnapshotCreationFails(t *testing.T) {
 	t.Parallel()
 
-	dir := t.TempDir()
-	cfgPath := dir + "/config.yaml"
-	require.NoError(t, os.WriteFile(cfgPath, []byte(""), 0o644))
-
 	testAgent := agent.Agent{
 		Name:    "test",
 		Image:   "img:latest",
@@ -487,7 +454,7 @@ func TestSandboxRunner_Run_SnapshotCreationFails(t *testing.T) {
 		Registry:        &mockRegistry{agents: map[string]agent.Agent{"test": testAgent}},
 		VMRunner:        &mockVMRunner{vm: &mockVM{sshPort: 8888, sshKeyPath: "/tmp/key"}},
 		Terminal:        &mockTerminal{},
-		CfgLoader:       infraconfig.NewLoader(cfgPath),
+		Config:          &config.Config{},
 		EnvProvider:     &mockEnvProvider{},
 		Logger:          testLogger(),
 		WorkspaceCloner: cloner,
@@ -506,10 +473,6 @@ func TestSandboxRunner_Run_SnapshotCreationFails(t *testing.T) {
 
 func TestSandboxRunner_Run_VMStoppedBeforeReview(t *testing.T) {
 	t.Parallel()
-
-	dir := t.TempDir()
-	cfgPath := dir + "/config.yaml"
-	require.NoError(t, os.WriteFile(cfgPath, []byte(""), 0o644))
 
 	workspaceDir := t.TempDir()
 	snapshotDir := t.TempDir()
@@ -540,7 +503,7 @@ func TestSandboxRunner_Run_VMStoppedBeforeReview(t *testing.T) {
 		Registry:        &mockRegistry{agents: map[string]agent.Agent{"test": testAgent}},
 		VMRunner:        &mockVMRunner{vm: mvm},
 		Terminal:        &mockTerminal{},
-		CfgLoader:       infraconfig.NewLoader(cfgPath),
+		Config:          &config.Config{},
 		EnvProvider:     &mockEnvProvider{},
 		Logger:          testLogger(),
 		WorkspaceCloner: cloner,

@@ -60,6 +60,7 @@ func TestDefaultSecurityPatterns(t *testing.T) {
 		".config/gh/hosts.yml",
 		"age-key.txt",
 		"*.age",
+		".sandbox-agent.yaml",
 	}
 	for _, pat := range expected {
 		assert.Contains(t, patterns, pat, "missing security pattern: %s", pat)

@@ -55,6 +55,26 @@ func (l *Loader) Path() string {
 	return l.path
 }
 
+// LoadFromPath reads and parses a config file at the given path.
+// Returns (nil, nil) when the file does not exist.
+// Returns a parsed Config for any existing file (including empty files).
+func LoadFromPath(path string) (*domainconfig.Config, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("reading config file %s: %w", path, err)
+	}
+
+	var cfg domainconfig.Config
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("parsing config file %s: %w", path, err)
+	}
+
+	return &cfg, nil
+}
+
 func defaultConfigPath() string {
 	configHome := os.Getenv("XDG_CONFIG_HOME")
 	if configHome == "" {

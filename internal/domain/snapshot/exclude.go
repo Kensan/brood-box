@@ -3,6 +3,8 @@
 
 package snapshot
 
+import "github.com/stacklok/sandbox-agent/internal/domain/config"
+
 // ExcludeConfig holds all exclude patterns organized by source.
 type ExcludeConfig struct {
 	// SecurityPatterns are non-overridable built-in patterns.
@@ -77,6 +79,8 @@ func DefaultSecurityPatterns() []string {
 		// Encryption keys
 		"age-key.txt",
 		"*.age",
+		// Sandbox agent config (should not be modified by agents)
+		config.LocalConfigFile,
 	}
 }
 

@@ -11,12 +11,14 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/spf13/cobra"
 
 	"github.com/stacklok/sandbox-agent/internal/app"
 	"github.com/stacklok/sandbox-agent/internal/domain/agent"
+	domainconfig "github.com/stacklok/sandbox-agent/internal/domain/config"
 	infraagent "github.com/stacklok/sandbox-agent/internal/infra/agent"
 	infraconfig "github.com/stacklok/sandbox-agent/internal/infra/config"
 	"github.com/stacklok/sandbox-agent/internal/infra/diff"
@@ -169,7 +171,19 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 	cfg, err := cfgLoader.Load()
 	if err != nil {
 		logger.Warn("failed to load config, using defaults", "error", err)
-	} else if cfg.Agents != nil {
+	}
+
+	// Load per-workspace config and merge.
+	localCfg, err := infraconfig.LoadFromPath(filepath.Join(ws, domainconfig.LocalConfigFile))
+	if err != nil {
+		logger.Warn("failed to load local config, ignoring", "error", err)
+	}
+	if localCfg != nil && localCfg.Review.Enabled != nil {
+		logger.Warn("review.enabled in local config is ignored for security — use --no-review or global config")
+	}
+	cfg = domainconfig.MergeConfigs(cfg, localCfg)
+
+	if cfg.Agents != nil {
 		// Register custom agents from config (only those not already built-in).
 		for name, override := range cfg.Agents {
 			if _, err := registry.Get(name); err != nil {
@@ -207,7 +221,7 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 		Registry:    registry,
 		VMRunner:    vm.NewPropolisRunner("", logger),
 		Terminal:    infrassh.NewInteractiveSession(logger),
-		CfgLoader:   cfgLoader,
+		Config:      cfg,
 		EnvProvider: agent.NewOSEnvProvider(os.Environ),
 		Logger:      logger,
 		Stdin:       os.Stdin,
