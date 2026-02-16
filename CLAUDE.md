@@ -5,7 +5,9 @@ Wraps the propolis framework with an opinionated CLI.
 
 Module: `github.com/stacklok/sandbox-agent`
 
-## Commands
+## Commands — ALWAYS use `task` (Taskfile.yaml)
+
+**IMPORTANT**: ALWAYS use `task <target>` for building, testing, linting, formatting, and running. NEVER invoke `go build`, `go test`, `golangci-lint`, `go fmt`, `goimports`, or `podman build` directly — the Taskfile wraps these with the correct flags, ldflags, env vars, and dependency ordering. Running raw commands will produce incorrect builds or miss steps.
 
 ```bash
 task build             # Build sandbox-agent (pure Go, no CGO)
@@ -28,13 +30,16 @@ task image-all         # Build all guest images
 task image-push        # Push all images to GHCR
 ```
 
-Run a single test: `go test -v -race -run TestName ./path/to/package`
+The only exception is running a single test, where raw `go test` is acceptable:
+`go test -v -race -run TestName ./path/to/package`
 
-## Architecture
+## Architecture — Strict DDD (Domain-Driven Design)
 
-DDD layered architecture with dependency injection:
+This project follows DDD layered architecture with dependency injection **strictly and without exception**. Every new type, interface, and function MUST be placed in the correct layer. Violating layer boundaries is a blocking issue — do not merge code that breaks these rules.
 
-**Domain** (pure types and interfaces — no I/O):
+### Layers
+
+**Domain** (`internal/domain/`) — Pure types and interfaces. ZERO I/O, ZERO external dependencies, ZERO side effects. Domain packages define _what_ things are and _what_ operations exist, never _how_ they are performed:
 - `internal/domain/agent/` — Agent value object, env forwarding
 - `internal/domain/config/` — Config types, merge logic
 - `internal/domain/vm/` — VMRunner, VM, VMConfig interfaces
@@ -42,10 +47,10 @@ DDD layered architecture with dependency injection:
 - `internal/domain/workspace/` — WorkspaceCloner interface, Snapshot type
 - `internal/domain/snapshot/` — FileChange, ExcludeConfig, Matcher, Differ, Reviewer, Flusher
 
-**Application**:
+**Application** (`internal/app/`) — Orchestration only. Depends on domain interfaces, never on infrastructure. Contains no I/O implementations:
 - `internal/app/` — SandboxRunner orchestrator (application service)
 
-**Infrastructure** (concrete implementations):
+**Infrastructure** (`internal/infra/`) — Concrete implementations of domain interfaces. This is the only layer that touches I/O, external libraries, and system calls:
 - `internal/infra/vm/` — Propolis VMRunner implementation, rootfs hooks
 - `internal/infra/ssh/` — Interactive PTY terminal session
 - `internal/infra/config/` — YAML config loader
@@ -55,15 +60,21 @@ DDD layered architecture with dependency injection:
 - `internal/infra/diff/` — SHA-256 based file diff engine
 - `internal/infra/review/` — Interactive per-file terminal review + flusher with hash verification
 
-**Guest VM** (Linux only — runs inside the microVM):
+**Guest VM** (`internal/guest/`, Linux only — runs inside the microVM):
 - `internal/guest/` — Boot, mount, network, env, sshd, reaper packages
 - `cmd/sandbox-init/` — Guest PID 1 init binary (compiled Go)
 
-**CLI + Build**:
+**CLI + Composition Root** (`cmd/`):
 - `cmd/sandbox-agent/main.go` — Composition root, wires dependencies, Cobra CLI
 - `internal/version/` — Version/commit info via ldflags
 
-**Rule**: `domain/` NEVER imports from `infra/` or `app/`. Interfaces live in domain, implementations in infra.
+### DDD Rules (non-negotiable)
+
+- **`domain/` NEVER imports from `infra/` or `app/`.** Interfaces live in domain, implementations in infra. No exceptions.
+- **`app/` NEVER imports from `infra/`.** The application layer depends only on domain interfaces; concrete implementations are injected by the composition root (`cmd/`).
+- **New interfaces go in `domain/`**, new implementations go in `infra/`**. If you need a new capability, define the interface in the appropriate domain package first, then implement it in infra.
+- **No business logic in `infra/`**. Infrastructure adapts external systems to domain interfaces — it does not make business decisions.
+- **No I/O in `domain/`**. Domain types must be testable without mocks, fakes, or network access.
 
 ## Conventions
 
@@ -104,7 +115,8 @@ Execution order: create snapshot → start VM → terminal → stop VM → diff 
 
 - **propolis is a local replace**: `go.mod` uses `replace github.com/stacklok/propolis => ../propolis`. The propolis checkout must be at `../propolis`.
 - **CGO boundary**: sandbox-agent itself is pure Go (`CGO_ENABLED=0`). Only propolis-runner needs CGO.
-- **Domain purity**: `internal/domain/` must never import from `internal/infra/` or `internal/app/`.
+- **Domain purity**: `internal/domain/` must never import from `internal/infra/` or `internal/app/`. This is the most important architectural invariant — break it and you break the entire DDD foundation.
+- **Always use `task`**: Never run `go build`, `go test ./...`, `golangci-lint`, `go fmt`, or `goimports` directly. The Taskfile sets critical env vars and flags. Raw commands will silently produce wrong results.
 
 ## Verification
 
