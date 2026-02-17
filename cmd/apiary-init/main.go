@@ -31,7 +31,7 @@ func main() {
 	stopReaper := reaper.Start(logger)
 	defer stopReaper()
 
-	shutdown, err := boot.Run(logger)
+	shutdown, err := boot.Run(logger, boot.WithSSHAgentForwarding(true))
 	if err != nil {
 		logger.Error("boot failed", "error", err)
 		halt()

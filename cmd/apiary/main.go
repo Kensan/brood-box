@@ -23,10 +23,12 @@ import (
 	"github.com/stacklok/apiary/internal/domain/egress"
 	"github.com/stacklok/apiary/internal/domain/progress"
 	"github.com/stacklok/apiary/internal/domain/snapshot"
+	"github.com/stacklok/apiary/internal/domain/workspace"
 	infraagent "github.com/stacklok/apiary/internal/infra/agent"
 	infraconfig "github.com/stacklok/apiary/internal/infra/config"
 	"github.com/stacklok/apiary/internal/infra/diff"
 	"github.com/stacklok/apiary/internal/infra/exclude"
+	infragit "github.com/stacklok/apiary/internal/infra/git"
 	infralogging "github.com/stacklok/apiary/internal/infra/logging"
 	inframcp "github.com/stacklok/apiary/internal/infra/mcp"
 	infraprogress "github.com/stacklok/apiary/internal/infra/progress"
@@ -70,6 +72,8 @@ func rootCmd() *cobra.Command {
 		mcpGroup      string
 		mcpPort       uint16
 		mcpConfig     string
+		noGitToken    bool
+		noGitSSHAgent bool
 	)
 
 	cmd := &cobra.Command{
@@ -114,6 +118,8 @@ Example:
 				mcpGroup:      mcpGroup,
 				mcpPort:       mcpPort,
 				mcpConfig:     mcpConfig,
+				noGitToken:    noGitToken,
+				noGitSSHAgent: noGitSSHAgent,
 			})
 		},
 		SilenceUsage:  true,
@@ -136,6 +142,8 @@ Example:
 	cmd.Flags().StringVar(&mcpGroup, "mcp-group", "default", "ToolHive group to discover MCP servers from")
 	cmd.Flags().Uint16Var(&mcpPort, "mcp-port", 4483, "Port for MCP proxy on VM gateway")
 	cmd.Flags().StringVar(&mcpConfig, "mcp-config", "", "Path to custom vmcp config YAML")
+	cmd.Flags().BoolVar(&noGitToken, "no-git-token", false, "Disable forwarding GITHUB_TOKEN/GH_TOKEN into the VM")
+	cmd.Flags().BoolVar(&noGitSSHAgent, "no-git-ssh-agent", false, "Disable SSH agent forwarding into the VM")
 
 	// Add list subcommand.
 	cmd.AddCommand(listCmd())
@@ -175,6 +183,8 @@ type runFlags struct {
 	mcpGroup      string
 	mcpPort       uint16
 	mcpConfig     string
+	noGitToken    bool
+	noGitSSHAgent bool
 }
 
 func run(parentCtx context.Context, agentName string, flags runFlags) error {
@@ -334,6 +344,13 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 		cfg.MCP.ConfigPath = mcpConfigPath
 	}
 
+	// Resolve git config from config + CLI flags.
+	gitTokenEnabled := cfg.Git.GitTokenEnabled() && !flags.noGitToken
+	sshAgentEnabled := cfg.Git.SSHAgentEnabled() && !flags.noGitSSHAgent
+
+	// Wire git identity provider (unconditional — used for both review and no-review modes).
+	deps.GitIdentityProvider = infragit.NewHostIdentityProvider("")
+
 	// Wire snapshot isolation dependencies only when review is enabled.
 	if reviewEnabled {
 		deps.WorkspaceCloner = infraws.NewFSWorkspaceCloner(
@@ -343,6 +360,11 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 		deps.Reviewer = reviewer
 		deps.Flusher = review.NewFSFlusher()
 		deps.Differ = diff.NewFSDiffer()
+
+		// Wire snapshot post-processors (git config sanitizer).
+		deps.SnapshotPostProcessors = []workspace.SnapshotPostProcessor{
+			infragit.NewConfigSanitizer(logger),
+		}
 	}
 
 	// Validate and parse egress flags.
@@ -367,13 +389,15 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 	runner := app.NewSandboxRunner(deps)
 
 	opts := app.RunOpts{
-		CPUs:          flags.cpus,
-		Memory:        flags.memory,
-		Workspace:     ws,
-		SSHPort:       flags.sshPort,
-		ImageOverride: flags.image,
-		EgressProfile: flags.egressProfile,
-		AllowHosts:    parsedAllowHosts,
+		CPUs:            flags.cpus,
+		Memory:          flags.memory,
+		Workspace:       ws,
+		SSHPort:         flags.sshPort,
+		ImageOverride:   flags.image,
+		EgressProfile:   flags.egressProfile,
+		AllowHosts:      parsedAllowHosts,
+		GitTokenEnabled: gitTokenEnabled,
+		SSHAgentForward: sshAgentEnabled,
 		Snapshot: app.SnapshotOpts{
 			Enabled:         reviewEnabled,
 			SnapshotMatcher: snapshotMatcher,
@@ -395,9 +419,7 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 		}
 	}()
 
-	restore, _ := terminal.MakeRaw()
 	termErr := runner.Attach(ctx, sb, terminal)
-	restore()
 
 	if stopErr := runner.Stop(sb); stopErr != nil {
 		logger.Error("failed to stop VM", "error", stopErr)

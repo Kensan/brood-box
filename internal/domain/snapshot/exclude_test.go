@@ -76,7 +76,6 @@ func TestDefaultPerformancePatterns(t *testing.T) {
 	expected := []string{
 		"node_modules/",
 		"vendor/",
-		".git/objects/",
 		"__pycache__/",
 	}
 	for _, pat := range expected {

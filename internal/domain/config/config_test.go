@@ -447,3 +447,77 @@ func TestToEgressHosts(t *testing.T) {
 		assert.Nil(t, got[1].Ports)
 	})
 }
+
+func TestMergeGitConfig(t *testing.T) {
+	t.Parallel()
+
+	boolPtr := func(b bool) *bool { return &b }
+
+	tests := []struct {
+		name   string
+		global GitConfig
+		local  GitConfig
+		want   GitConfig
+	}{
+		{
+			name:   "both nil defaults to enabled",
+			global: GitConfig{},
+			local:  GitConfig{},
+			want:   GitConfig{},
+		},
+		{
+			name:   "local can disable token forwarding",
+			global: GitConfig{},
+			local:  GitConfig{ForwardToken: boolPtr(false)},
+			want:   GitConfig{ForwardToken: boolPtr(false)},
+		},
+		{
+			name:   "local cannot re-enable token forwarding",
+			global: GitConfig{ForwardToken: boolPtr(false)},
+			local:  GitConfig{ForwardToken: boolPtr(true)},
+			want:   GitConfig{ForwardToken: boolPtr(false)},
+		},
+		{
+			name:   "local can disable SSH agent forwarding",
+			global: GitConfig{},
+			local:  GitConfig{ForwardSSHAgent: boolPtr(false)},
+			want:   GitConfig{ForwardSSHAgent: boolPtr(false)},
+		},
+		{
+			name:   "local cannot re-enable SSH agent forwarding",
+			global: GitConfig{ForwardSSHAgent: boolPtr(false)},
+			local:  GitConfig{ForwardSSHAgent: boolPtr(true)},
+			want:   GitConfig{ForwardSSHAgent: boolPtr(false)},
+		},
+		{
+			name:   "global enabled plus local nil stays enabled",
+			global: GitConfig{ForwardToken: boolPtr(true)},
+			local:  GitConfig{},
+			want:   GitConfig{ForwardToken: boolPtr(true)},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := mergeGitConfig(tt.global, tt.local)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestGitConfig_Defaults(t *testing.T) {
+	t.Parallel()
+
+	var cfg GitConfig
+	assert.True(t, cfg.GitTokenEnabled(), "nil ForwardToken should default to true")
+	assert.True(t, cfg.SSHAgentEnabled(), "nil ForwardSSHAgent should default to true")
+
+	boolPtr := func(b bool) *bool { return &b }
+
+	cfg.ForwardToken = boolPtr(false)
+	assert.False(t, cfg.GitTokenEnabled())
+
+	cfg.ForwardSSHAgent = boolPtr(false)
+	assert.False(t, cfg.SSHAgentEnabled())
+}

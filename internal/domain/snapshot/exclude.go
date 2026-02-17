@@ -90,7 +90,6 @@ func DefaultPerformancePatterns() []string {
 	return []string{
 		"node_modules/",
 		"vendor/",
-		".git/objects/",
 		"__pycache__/",
 		"target/",
 		"build/",

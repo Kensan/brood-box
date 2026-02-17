@@ -98,6 +98,7 @@ func (r *PropolisRunner) Start(ctx context.Context, cfg domvm.VMConfig) (domvm.V
 			hooks.InjectAuthorizedKeys(pubKey),
 			InjectInitBinary(),
 			hooks.InjectEnvFile("/etc/sandbox-env", cfg.EnvVars),
+			InjectGitConfig(cfg.GitIdentity, cfg.HasGitToken),
 		),
 		propolis.WithInitOverride("/apiary-init"),
 		propolis.WithPostBoot(func(ctx context.Context, _ *propolis.VM) error {

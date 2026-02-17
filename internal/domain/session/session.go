@@ -28,6 +28,9 @@ type SessionOpts struct {
 
 	// Terminal provides I/O streams and PTY control for the session.
 	Terminal Terminal
+
+	// SSHAgentForward enables SSH agent forwarding for this session.
+	SSHAgentForward bool
 }
 
 // TerminalSession manages interactive PTY sessions over SSH.

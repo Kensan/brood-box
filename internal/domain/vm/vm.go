@@ -10,6 +10,7 @@ import (
 
 	"github.com/stacklok/apiary/internal/domain/agent"
 	"github.com/stacklok/apiary/internal/domain/egress"
+	"github.com/stacklok/apiary/internal/domain/git"
 )
 
 // VMConfig holds the parameters needed to start a sandbox VM.
@@ -45,6 +46,15 @@ type VMConfig struct {
 
 	// MCPConfigFormat identifies how MCP config should be injected into the rootfs.
 	MCPConfigFormat agent.MCPConfigFormat
+
+	// GitIdentity is the git user identity to inject into the VM.
+	GitIdentity git.Identity
+
+	// HasGitToken indicates whether a GitHub token is available for forwarding.
+	HasGitToken bool
+
+	// SSHAgentForward enables SSH agent forwarding to the VM.
+	SSHAgentForward bool
 }
 
 // HostService describes an HTTP service exposed from host to guest.

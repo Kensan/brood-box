@@ -27,8 +27,41 @@ type Config struct {
 	// MCP configures the in-process MCP proxy.
 	MCP MCPConfig `yaml:"mcp"`
 
+	// Git configures git identity and auth forwarding.
+	Git GitConfig `yaml:"git"`
+
 	// Agents maps agent names to configuration overrides.
 	Agents map[string]AgentOverride `yaml:"agents"`
+}
+
+// GitConfig configures git identity and authentication forwarding
+// into the sandbox VM.
+type GitConfig struct {
+	// ForwardToken controls whether GITHUB_TOKEN/GH_TOKEN are forwarded.
+	// nil = default true.
+	ForwardToken *bool `yaml:"forward_token,omitempty"`
+
+	// ForwardSSHAgent controls whether SSH agent forwarding is enabled.
+	// nil = default true.
+	ForwardSSHAgent *bool `yaml:"forward_ssh_agent,omitempty"`
+}
+
+// GitTokenEnabled returns whether git token forwarding is enabled.
+// Defaults to true when ForwardToken is nil.
+func (g GitConfig) GitTokenEnabled() bool {
+	if g.ForwardToken == nil {
+		return true
+	}
+	return *g.ForwardToken
+}
+
+// SSHAgentEnabled returns whether SSH agent forwarding is enabled.
+// Defaults to true when ForwardSSHAgent is nil.
+func (g GitConfig) SSHAgentEnabled() bool {
+	if g.ForwardSSHAgent == nil {
+		return true
+	}
+	return *g.ForwardSSHAgent
 }
 
 // MCPConfig configures the in-process MCP proxy.
@@ -165,6 +198,9 @@ func MergeConfigs(global, local *Config) *Config {
 		)
 	}
 
+	// Git: local can only tighten (disable), not enable if globally disabled.
+	result.Git = mergeGitConfig(global.Git, local.Git)
+
 	// Agents: local extends/overrides global per key.
 	if len(local.Agents) > 0 {
 		if result.Agents == nil {
@@ -226,6 +262,24 @@ func Merge(a agent.Agent, override AgentOverride, defaults DefaultsConfig) agent
 	}
 	if result.DefaultEgressProfile == "" {
 		result.DefaultEgressProfile = egress.ProfileStandard
+	}
+
+	return result
+}
+
+// mergeGitConfig merges local into global. Local can only tighten
+// (set to false) — it cannot re-enable something globally disabled.
+func mergeGitConfig(global, local GitConfig) GitConfig {
+	result := global
+
+	// Local can disable token forwarding, but cannot re-enable it.
+	if local.ForwardToken != nil && !*local.ForwardToken {
+		result.ForwardToken = local.ForwardToken
+	}
+
+	// Local can disable SSH agent forwarding, but cannot re-enable it.
+	if local.ForwardSSHAgent != nil && !*local.ForwardSSHAgent {
+		result.ForwardSSHAgent = local.ForwardSSHAgent
 	}
 
 	return result

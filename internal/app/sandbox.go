@@ -14,6 +14,7 @@ import (
 	"github.com/stacklok/apiary/internal/domain/agent"
 	"github.com/stacklok/apiary/internal/domain/config"
 	"github.com/stacklok/apiary/internal/domain/egress"
+	domaingit "github.com/stacklok/apiary/internal/domain/git"
 	"github.com/stacklok/apiary/internal/domain/hostservice"
 	"github.com/stacklok/apiary/internal/domain/progress"
 	"github.com/stacklok/apiary/internal/domain/session"
@@ -62,6 +63,12 @@ type RunOpts struct {
 	// Snapshot holds snapshot isolation options.
 	Snapshot SnapshotOpts
 
+	// GitTokenEnabled controls whether git token env vars are forwarded.
+	GitTokenEnabled bool
+
+	// SSHAgentForward enables SSH agent forwarding to the VM.
+	SSHAgentForward bool
+
 	// Terminal provides I/O streams for the session. Required for Run().
 	Terminal session.Terminal
 }
@@ -84,18 +91,25 @@ type SandboxDeps struct {
 
 	// MCPProvider creates host services for MCP proxy (nil = disabled).
 	MCPProvider hostservice.Provider
+
+	// SnapshotPostProcessors run after snapshot creation but before VM start.
+	SnapshotPostProcessors []workspace.SnapshotPostProcessor
+
+	// GitIdentityProvider resolves the host git user identity.
+	GitIdentityProvider domaingit.IdentityProvider
 }
 
 // Sandbox holds the state of a running sandbox session.
 // Created by Prepare, consumed by Attach/Stop/Changes/Flush/Cleanup.
 type Sandbox struct {
-	Agent         agent.Agent
-	VM            domvm.VM
-	VMConfig      domvm.VMConfig
-	Snapshot      *workspace.Snapshot
-	WorkspacePath string
-	DiffMatcher   snapshot.Matcher
-	EnvVars       map[string]string
+	Agent           agent.Agent
+	VM              domvm.VM
+	VMConfig        domvm.VMConfig
+	Snapshot        *workspace.Snapshot
+	WorkspacePath   string
+	DiffMatcher     snapshot.Matcher
+	EnvVars         map[string]string
+	SSHAgentForward bool
 }
 
 // Cleanup releases resources (snapshot dir). Safe to call multiple times.
@@ -116,18 +130,20 @@ func (sb *Sandbox) Cleanup() error {
 // Changes(), Flush(), and Sandbox.Cleanup() individually. This allows the caller
 // to control terminal attachment, async review workflows, and concurrent sessions.
 type SandboxRunner struct {
-	registry        agent.Registry
-	vmRunner        domvm.VMRunner
-	sessionRunner   session.TerminalSession
-	config          *config.Config
-	envProvider     agent.EnvProvider
-	logger          *slog.Logger
-	observer        progress.Observer
-	workspaceCloner workspace.WorkspaceCloner
-	reviewer        snapshot.Reviewer
-	flusher         snapshot.Flusher
-	differ          snapshot.Differ
-	mcpProvider     hostservice.Provider
+	registry               agent.Registry
+	vmRunner               domvm.VMRunner
+	sessionRunner          session.TerminalSession
+	config                 *config.Config
+	envProvider            agent.EnvProvider
+	logger                 *slog.Logger
+	observer               progress.Observer
+	workspaceCloner        workspace.WorkspaceCloner
+	reviewer               snapshot.Reviewer
+	flusher                snapshot.Flusher
+	differ                 snapshot.Differ
+	mcpProvider            hostservice.Provider
+	snapshotPostProcessors []workspace.SnapshotPostProcessor
+	gitIdentityProvider    domaingit.IdentityProvider
 }
 
 // NewSandboxRunner creates a new SandboxRunner with the given dependencies.
@@ -137,18 +153,20 @@ func NewSandboxRunner(deps SandboxDeps) *SandboxRunner {
 		obs = progress.Nop()
 	}
 	return &SandboxRunner{
-		registry:        deps.Registry,
-		vmRunner:        deps.VMRunner,
-		sessionRunner:   deps.SessionRunner,
-		config:          deps.Config,
-		envProvider:     deps.EnvProvider,
-		logger:          deps.Logger,
-		observer:        obs,
-		workspaceCloner: deps.WorkspaceCloner,
-		reviewer:        deps.Reviewer,
-		flusher:         deps.Flusher,
-		differ:          deps.Differ,
-		mcpProvider:     deps.MCPProvider,
+		registry:               deps.Registry,
+		vmRunner:               deps.VMRunner,
+		sessionRunner:          deps.SessionRunner,
+		config:                 deps.Config,
+		envProvider:            deps.EnvProvider,
+		logger:                 deps.Logger,
+		observer:               obs,
+		workspaceCloner:        deps.WorkspaceCloner,
+		reviewer:               deps.Reviewer,
+		flusher:                deps.Flusher,
+		differ:                 deps.Differ,
+		mcpProvider:            deps.MCPProvider,
+		snapshotPostProcessors: deps.SnapshotPostProcessors,
+		gitIdentityProvider:    deps.GitIdentityProvider,
 	}
 }
 
@@ -230,8 +248,12 @@ func (s *SandboxRunner) Prepare(ctx context.Context, agentName string, opts RunO
 		)
 	}
 
-	// 3. Collect env vars.
-	envVars := agent.ForwardEnv(ag.EnvForward, s.envProvider)
+	// 3. Collect env vars (merge common git patterns when token forwarding is enabled).
+	allPatterns := ag.EnvForward
+	if opts.GitTokenEnabled {
+		allPatterns = mergeEnvPatterns(allPatterns, domaingit.CommonEnvPatterns())
+	}
+	envVars := agent.ForwardEnv(allPatterns, s.envProvider)
 	if len(envVars) > 0 {
 		keys := make([]string, 0, len(envVars))
 		for k := range envVars {
@@ -239,6 +261,44 @@ func (s *SandboxRunner) Prepare(ctx context.Context, agentName string, opts RunO
 		}
 		s.logger.Debug("forwarding environment variables", "keys", keys)
 	}
+
+	// Resolve git identity (fallback for env vars not already set).
+	var gitIdentity domaingit.Identity
+	if s.gitIdentityProvider != nil {
+		id, idErr := s.gitIdentityProvider.GetIdentity()
+		if idErr != nil {
+			s.logger.Warn("failed to resolve git identity", "error", idErr)
+		} else {
+			gitIdentity = id
+		}
+	}
+
+	// Inject git identity into env vars as fallback when not already present.
+	if gitIdentity.Name != "" {
+		if envVars == nil {
+			envVars = make(map[string]string)
+		}
+		if _, ok := envVars["GIT_AUTHOR_NAME"]; !ok {
+			envVars["GIT_AUTHOR_NAME"] = gitIdentity.Name
+		}
+		if _, ok := envVars["GIT_COMMITTER_NAME"]; !ok {
+			envVars["GIT_COMMITTER_NAME"] = gitIdentity.Name
+		}
+	}
+	if gitIdentity.Email != "" {
+		if envVars == nil {
+			envVars = make(map[string]string)
+		}
+		if _, ok := envVars["GIT_AUTHOR_EMAIL"]; !ok {
+			envVars["GIT_AUTHOR_EMAIL"] = gitIdentity.Email
+		}
+		if _, ok := envVars["GIT_COMMITTER_EMAIL"]; !ok {
+			envVars["GIT_COMMITTER_EMAIL"] = gitIdentity.Email
+		}
+	}
+
+	// Determine if a GitHub token is available for credential helper injection.
+	hasGitToken := opts.GitTokenEnabled && (envVars["GITHUB_TOKEN"] != "" || envVars["GH_TOKEN"] != "")
 
 	// 4. Set up MCP host services if enabled.
 	var hostServices []domvm.HostService
@@ -286,6 +346,20 @@ func (s *SandboxRunner) Prepare(ctx context.Context, agentName string, opts RunO
 			"original", snap.OriginalPath,
 			"snapshot", snap.SnapshotPath,
 		)
+
+		// Run post-processors on the snapshot (e.g., git config sanitizer).
+		// Failures abort VM start — post-processors are security-relevant
+		// (credential stripping) and must not be silently skipped.
+		for _, pp := range s.snapshotPostProcessors {
+			if ppErr := pp.Process(ctx, snap.OriginalPath, snap.SnapshotPath); ppErr != nil {
+				s.observer.Fail("Snapshot post-processing failed")
+				if cleanErr := snap.Cleanup(); cleanErr != nil {
+					s.logger.Error("failed to clean up snapshot after post-processor failure", "error", cleanErr)
+				}
+				return nil, fmt.Errorf("snapshot post-processing: %w", ppErr)
+			}
+		}
+
 		workspacePath = snap.SnapshotPath
 	}
 
@@ -303,6 +377,9 @@ func (s *SandboxRunner) Prepare(ctx context.Context, agentName string, opts RunO
 		EgressPolicy:    egressPolicy,
 		HostServices:    hostServices,
 		MCPConfigFormat: ag.MCPConfigFormat,
+		GitIdentity:     gitIdentity,
+		HasGitToken:     hasGitToken,
+		SSHAgentForward: opts.SSHAgentForward,
 	}
 
 	sandboxVM, err := s.vmRunner.Start(ctx, vmCfg)
@@ -320,13 +397,14 @@ func (s *SandboxRunner) Prepare(ctx context.Context, agentName string, opts RunO
 	s.observer.Complete("Sandbox ready")
 
 	return &Sandbox{
-		Agent:         ag,
-		VM:            sandboxVM,
-		VMConfig:      vmCfg,
-		Snapshot:      snap,
-		WorkspacePath: workspacePath,
-		DiffMatcher:   diffMatcher,
-		EnvVars:       envVars,
+		Agent:           ag,
+		VM:              sandboxVM,
+		VMConfig:        vmCfg,
+		Snapshot:        snap,
+		WorkspacePath:   workspacePath,
+		DiffMatcher:     diffMatcher,
+		EnvVars:         envVars,
+		SSHAgentForward: opts.SSHAgentForward,
 	}, nil
 }
 
@@ -335,12 +413,13 @@ func (s *SandboxRunner) Prepare(ctx context.Context, agentName string, opts RunO
 // The terminal parameter provides I/O streams and PTY control for this session.
 func (s *SandboxRunner) Attach(ctx context.Context, sb *Sandbox, terminal session.Terminal) error {
 	sessionOpts := session.SessionOpts{
-		Host:     "127.0.0.1",
-		Port:     sb.VM.SSHPort(),
-		User:     "sandbox",
-		KeyPath:  sb.VM.SSHKeyPath(),
-		Command:  sb.Agent.Command,
-		Terminal: terminal,
+		Host:            "127.0.0.1",
+		Port:            sb.VM.SSHPort(),
+		User:            "sandbox",
+		KeyPath:         sb.VM.SSHKeyPath(),
+		Command:         sb.Agent.Command,
+		Terminal:        terminal,
+		SSHAgentForward: sb.SSHAgentForward,
 	}
 
 	s.logger.Debug("connecting to sandbox VM",
@@ -447,6 +526,23 @@ func (s *SandboxRunner) Run(ctx context.Context, agentName string, opts RunOpts)
 		return termErr
 	}
 	return reviewErr
+}
+
+// mergeEnvPatterns combines two pattern lists, deduplicating entries.
+func mergeEnvPatterns(base, extra []string) []string {
+	seen := make(map[string]bool, len(base))
+	for _, p := range base {
+		seen[p] = true
+	}
+	merged := make([]string, len(base))
+	copy(merged, base)
+	for _, p := range extra {
+		if !seen[p] {
+			merged = append(merged, p)
+			seen[p] = true
+		}
+	}
+	return merged
 }
 
 // resolveMCPConfig returns the effective MCP configuration by merging

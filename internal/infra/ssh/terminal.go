@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/agent"
 
 	"github.com/stacklok/apiary/internal/domain/session"
 )
@@ -68,11 +69,25 @@ func (s *InteractiveSession) Run(ctx context.Context, opts session.SessionOpts) 
 	}
 	defer func() { _ = client.Close() }()
 
+	// Set up SSH agent forwarding if requested and an agent is available.
+	if opts.SSHAgentForward {
+		if err := s.setupAgentForwarding(client); err != nil {
+			s.logger.Debug("SSH agent forwarding not available", "error", err)
+		}
+	}
+
 	sshSession, err := client.NewSession()
 	if err != nil {
 		return fmt.Errorf("creating SSH session: %w", err)
 	}
 	defer func() { _ = sshSession.Close() }()
+
+	// Request agent forwarding on this session if we set it up.
+	if opts.SSHAgentForward {
+		if fwdErr := agent.RequestAgentForwarding(sshSession); fwdErr != nil {
+			s.logger.Debug("failed to request agent forwarding", "error", fwdErr)
+		}
+	}
 
 	// Set terminal to raw mode if it's a real terminal.
 	if opts.Terminal.IsInteractive() {
@@ -139,6 +154,58 @@ func (s *InteractiveSession) Run(ctx context.Context, opts session.SessionOpts) 
 		_ = sshSession.Signal(ssh.SIGTERM)
 		return ctx.Err()
 	}
+}
+
+// setupAgentForwarding registers a handler for incoming auth-agent@openssh.com
+// channel opens from the server. Each channel gets its own connection to the
+// local SSH agent to avoid concurrency issues on the agent protocol stream.
+// If SSH_AUTH_SOCK is not set or unreachable, returns an error (non-fatal).
+func (s *InteractiveSession) setupAgentForwarding(client *ssh.Client) error {
+	authSock := os.Getenv("SSH_AUTH_SOCK")
+	if authSock == "" {
+		return fmt.Errorf("SSH_AUTH_SOCK not set")
+	}
+
+	// Verify the agent is reachable before committing to forwarding.
+	testConn, err := net.Dial("unix", authSock)
+	if err != nil {
+		return fmt.Errorf("connecting to SSH agent: %w", err)
+	}
+	_ = testConn.Close()
+
+	// Handle incoming auth-agent@openssh.com channel opens from the server.
+	// When a process inside the VM connects to the agent socket, the server
+	// opens this channel type back to us. We serve the agent protocol on it.
+	// Each channel gets a dedicated connection to the local agent because the
+	// agent protocol stream is not safe for concurrent multiplexed use.
+	go func() {
+		for ch := range client.HandleChannelOpen("auth-agent@openssh.com") {
+			channel, reqs, err := ch.Accept()
+			if err != nil {
+				s.logger.Debug("failed to accept agent channel", "error", err)
+				continue
+			}
+			go ssh.DiscardRequests(reqs)
+			go func() {
+				defer func() { _ = channel.Close() }()
+
+				agentConn, err := net.Dial("unix", authSock)
+				if err != nil {
+					s.logger.Debug("failed to connect to SSH agent for channel", "error", err)
+					return
+				}
+				defer func() { _ = agentConn.Close() }()
+
+				agentClient := agent.NewClient(agentConn)
+				if err := agent.ServeAgent(agentClient, channel); err != nil {
+					s.logger.Debug("agent forwarding session ended", "error", err)
+				}
+			}()
+		}
+	}()
+
+	s.logger.Debug("SSH agent forwarding configured")
+	return nil
 }
 
 // buildCommand constructs the shell command to run in the VM.
