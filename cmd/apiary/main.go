@@ -38,10 +38,7 @@ import (
 	"github.com/stacklok/apiary/internal/version"
 )
 
-// defaultLogDir is the directory for apiary log files.
-const defaultLogDir = ".config/apiary/logs"
-
-// defaultLogFile is the log file name within the log directory.
+// defaultLogFile is the log file name within the per-VM data directory.
 const defaultLogFile = "apiary.log"
 
 // maxLogSize is the maximum log file size before truncation (10 MiB).
@@ -132,7 +129,7 @@ Example:
 	cmd.Flags().BoolVar(&debug, "debug", false, "Enable debug logging (shows full slog output on stderr)")
 	cmd.Flags().BoolVar(&noReview, "no-review", false, "Disable workspace snapshot isolation (mount workspace directly)")
 	cmd.Flags().StringSliceVar(&excludes, "exclude", nil, "Additional exclude patterns for workspace snapshot (repeatable)")
-	cmd.Flags().StringVar(&logFile, "log-file", "", "Override log file path (default: ~/.config/apiary/logs/apiary.log)")
+	cmd.Flags().StringVar(&logFile, "log-file", "", "Override log file path (default: ~/.config/apiary/vms/<vm-name>/apiary.log)")
 	cmd.Flags().StringVar(&egressProfile, "egress-profile", "", "Egress restriction level: permissive, standard, locked (default: agent's built-in default)")
 	cmd.Flags().StringSliceVar(&allowHosts, "allow-host", nil, "Additional allowed egress host, format: hostname[:port] (repeatable)")
 	cmd.Flags().BoolVar(&mcpEnabled, "mcp", false, "Enable MCP tool proxy (discovers servers from ToolHive)")
@@ -185,8 +182,11 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 	ctx, cancel := signal.NotifyContext(parentCtx, syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
+	// Derive VM name early so logs land in the per-VM directory.
+	vmName := "sandbox-" + agentName
+
 	// Set up logging: always write to file, optionally also to stderr.
-	logFile, logCloser, err := openLogFile(flags.logFile)
+	logFile, logCloser, err := openLogFile(flags.logFile, vmName)
 	if err != nil {
 		// Non-fatal: fall back to stderr-only logging.
 		_, _ = fmt.Fprintf(os.Stderr, "Warning: could not open log file: %s\n", err)
@@ -195,7 +195,7 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 		defer func() { _ = logCloser.Close() }()
 	}
 
-	logger := setupLogger(logFile, flags.debug)
+	logger := setupLogger(logFile, flags.debug).With("vm", vmName)
 	slog.SetDefault(logger)
 
 	// Set up progress observer based on mode.
@@ -451,15 +451,17 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 }
 
 // openLogFile opens (or creates) the log file, truncating if it exceeds maxLogSize.
+// When no override is given, the log is placed in the per-VM data directory
+// at ~/.config/apiary/vms/<vmName>/apiary.log.
 // Returns the file, a closer, and any error.
-func openLogFile(override string) (*os.File, io.Closer, error) {
+func openLogFile(override, vmName string) (*os.File, io.Closer, error) {
 	logPath := override
 	if logPath == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return nil, nil, fmt.Errorf("getting home dir: %w", err)
 		}
-		logDir := filepath.Join(home, defaultLogDir)
+		logDir := filepath.Join(home, ".config", "apiary", "vms", vmName)
 		if err := os.MkdirAll(logDir, 0o750); err != nil {
 			return nil, nil, fmt.Errorf("creating log dir: %w", err)
 		}
