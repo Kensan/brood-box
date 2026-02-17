@@ -33,7 +33,7 @@ type Config struct {
 
 // MCPConfig configures the in-process MCP proxy.
 type MCPConfig struct {
-	// Enabled controls whether the MCP proxy is active. Default: false.
+	// Enabled controls whether the MCP proxy is active. Default: true.
 	Enabled bool `yaml:"enabled"`
 
 	// Group is the ToolHive group to discover servers from. Default: "default".

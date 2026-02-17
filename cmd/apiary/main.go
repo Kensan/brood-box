@@ -66,7 +66,7 @@ func rootCmd() *cobra.Command {
 		logFile       string
 		egressProfile string
 		allowHosts    []string
-		mcpEnabled    bool
+		noMCP         bool
 		mcpGroup      string
 		mcpPort       uint16
 		mcpConfig     string
@@ -92,8 +92,8 @@ Example:
   apiary claude-code --exclude "*.log" --exclude "tmp/"
   apiary claude-code --egress-profile locked
   apiary claude-code --allow-host "custom-api.example.com:443"
-  apiary claude-code --mcp
-  apiary claude-code --mcp --mcp-group "coding-tools"`,
+  apiary claude-code --no-mcp
+  apiary claude-code --mcp-group "coding-tools"`,
 		Args:    cobra.ExactArgs(1),
 		Version: fmt.Sprintf("%s (%s)", version.Version, version.Commit),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -110,7 +110,7 @@ Example:
 				logFile:       logFile,
 				egressProfile: egressProfile,
 				allowHosts:    allowHosts,
-				mcpEnabled:    mcpEnabled,
+				noMCP:         noMCP,
 				mcpGroup:      mcpGroup,
 				mcpPort:       mcpPort,
 				mcpConfig:     mcpConfig,
@@ -132,7 +132,7 @@ Example:
 	cmd.Flags().StringVar(&logFile, "log-file", "", "Override log file path (default: ~/.config/apiary/vms/<vm-name>/apiary.log)")
 	cmd.Flags().StringVar(&egressProfile, "egress-profile", "", "Egress restriction level: permissive, standard, locked (default: agent's built-in default)")
 	cmd.Flags().StringSliceVar(&allowHosts, "allow-host", nil, "Additional allowed egress host, format: hostname[:port] (repeatable)")
-	cmd.Flags().BoolVar(&mcpEnabled, "mcp", false, "Enable MCP tool proxy (discovers servers from ToolHive)")
+	cmd.Flags().BoolVar(&noMCP, "no-mcp", false, "Disable MCP tool proxy (enabled by default, discovers servers from ToolHive)")
 	cmd.Flags().StringVar(&mcpGroup, "mcp-group", "default", "ToolHive group to discover MCP servers from")
 	cmd.Flags().Uint16Var(&mcpPort, "mcp-port", 4483, "Port for MCP proxy on VM gateway")
 	cmd.Flags().StringVar(&mcpConfig, "mcp-config", "", "Path to custom vmcp config YAML")
@@ -171,7 +171,7 @@ type runFlags struct {
 	logFile       string
 	egressProfile string
 	allowHosts    []string
-	mcpEnabled    bool
+	noMCP         bool
 	mcpGroup      string
 	mcpPort       uint16
 	mcpConfig     string
@@ -304,10 +304,10 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 		Observer:      observer,
 	}
 
-	// Wire MCP proxy when enabled (CLI flag or config).
-	mcpEnabled := flags.mcpEnabled
-	if !mcpEnabled && cfg != nil && cfg.MCP.Enabled {
-		mcpEnabled = true
+	// Wire MCP proxy (enabled by default, --no-mcp to disable).
+	mcpEnabled := !flags.noMCP
+	if mcpEnabled && cfg != nil && !cfg.MCP.Enabled {
+		mcpEnabled = false
 	}
 	if mcpEnabled {
 		mcpGroup := flags.mcpGroup
