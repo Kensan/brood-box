@@ -71,12 +71,31 @@ type RunOpts struct {
 	Terminal session.Terminal
 }
 
+// SandboxConfig holds the subset of configuration that the sandbox
+// runner actually needs. SDK consumers construct this directly instead
+// of building the full CLI config schema.
+type SandboxConfig struct {
+	// Defaults specifies fallback resource limits.
+	Defaults config.DefaultsConfig
+
+	// AgentOverrides maps agent names to per-agent configuration overrides.
+	AgentOverrides map[string]config.AgentOverride
+
+	// ExtraEgressHosts are pre-converted egress hosts from config
+	// (network.allow_hosts). CLI consumers call config.ToEgressHosts()
+	// before populating this field.
+	ExtraEgressHosts []egress.Host
+
+	// MCP configures the in-process MCP proxy.
+	MCP config.MCPConfig
+}
+
 // SandboxDeps holds all dependencies for SandboxRunner.
 type SandboxDeps struct {
 	Registry      agent.Registry
 	VMRunner      domvm.VMRunner
 	SessionRunner session.TerminalSession
-	Config        *config.Config
+	Config        *SandboxConfig
 	EnvProvider   agent.EnvProvider
 	Logger        *slog.Logger
 	Observer      progress.Observer
@@ -131,7 +150,7 @@ type SandboxRunner struct {
 	registry               agent.Registry
 	vmRunner               domvm.VMRunner
 	sessionRunner          session.TerminalSession
-	config                 *config.Config
+	config                 *SandboxConfig
 	envProvider            agent.EnvProvider
 	logger                 *slog.Logger
 	observer               progress.Observer
@@ -183,12 +202,12 @@ func (s *SandboxRunner) Prepare(ctx context.Context, agentName string, opts RunO
 	// 2. Apply config overrides.
 	cfg := s.config
 	if cfg == nil {
-		cfg = &config.Config{}
+		cfg = &SandboxConfig{}
 	}
 
 	override := config.AgentOverride{}
-	if cfg.Agents != nil {
-		if o, ok := cfg.Agents[agentName]; ok {
+	if cfg.AgentOverrides != nil {
+		if o, ok := cfg.AgentOverrides[agentName]; ok {
 			override = o
 		}
 	}
@@ -228,7 +247,7 @@ func (s *SandboxRunner) Prepare(ctx context.Context, agentName string, opts RunO
 
 	// Collect extra hosts: config network hosts + agent override hosts + CLI hosts.
 	var extraHosts []egress.Host
-	extraHosts = append(extraHosts, config.ToEgressHosts(cfg.Network.AllowHosts)...)
+	extraHosts = append(extraHosts, cfg.ExtraEgressHosts...)
 	if override.AllowHosts != nil {
 		extraHosts = append(extraHosts, config.ToEgressHosts(override.AllowHosts)...)
 	}
@@ -545,11 +564,11 @@ func mergeEnvPatterns(base, extra []string) []string {
 
 // resolveMCPConfig returns the effective MCP configuration by merging
 // global config with any agent-specific override.
-func (s *SandboxRunner) resolveMCPConfig(cfg *config.Config, agentName string) config.MCPConfig {
+func (s *SandboxRunner) resolveMCPConfig(cfg *SandboxConfig, agentName string) config.MCPConfig {
 	mcpCfg := cfg.MCP
 
 	// Apply agent-specific override if present.
-	if override, ok := cfg.Agents[agentName]; ok && override.MCP != nil {
+	if override, ok := cfg.AgentOverrides[agentName]; ok && override.MCP != nil {
 		if override.MCP.Enabled != nil {
 			mcpCfg.Enabled = override.MCP.Enabled
 		}

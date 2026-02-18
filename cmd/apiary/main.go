@@ -303,13 +303,21 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 		diffMatcher = exclude.NewDiffMatcher(excludeCfg, gitignorePatterns)
 	}
 
+	// Build SandboxConfig from the loaded config.
+	sandboxCfg := &sandbox.SandboxConfig{
+		Defaults:         cfg.Defaults,
+		AgentOverrides:   cfg.Agents,
+		ExtraEgressHosts: domainconfig.ToEgressHosts(cfg.Network.AllowHosts),
+		MCP:              cfg.MCP,
+	}
+
 	// Wire dependencies.
 	var reviewer *review.InteractiveReviewer
 	deps := sandbox.SandboxDeps{
 		Registry:      registry,
 		VMRunner:      infravm.NewPropolisRunner("", logger),
 		SessionRunner: infrassh.NewInteractiveSession(logger),
-		Config:        cfg,
+		Config:        sandboxCfg,
 		EnvProvider:   agent.NewOSEnvProvider(os.Environ),
 		Logger:        logger,
 		Observer:      observer,
@@ -338,12 +346,12 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 		mcpProvider := inframcp.NewVMCPProvider(mcpGroup, mcpPort, mcpConfigPath, logger, logFile)
 		deps.MCPProvider = mcpProvider
 		defer func() { _ = mcpProvider.Close() }()
-		// Ensure config reflects MCP enabled state for the application layer.
+		// Ensure sandbox config reflects MCP enabled state for the application layer.
 		enabled := true
-		cfg.MCP.Enabled = &enabled
-		cfg.MCP.Group = mcpGroup
-		cfg.MCP.Port = mcpPort
-		cfg.MCP.ConfigPath = mcpConfigPath
+		sandboxCfg.MCP.Enabled = &enabled
+		sandboxCfg.MCP.Group = mcpGroup
+		sandboxCfg.MCP.Port = mcpPort
+		sandboxCfg.MCP.ConfigPath = mcpConfigPath
 	}
 
 	// Resolve git config from config + CLI flags.

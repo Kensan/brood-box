@@ -16,7 +16,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/stacklok/apiary/pkg/domain/agent"
-	"github.com/stacklok/apiary/pkg/domain/config"
 	"github.com/stacklok/apiary/pkg/domain/egress"
 	"github.com/stacklok/apiary/pkg/domain/session"
 	"github.com/stacklok/apiary/pkg/domain/snapshot"
@@ -199,7 +198,7 @@ func TestSandboxRunner_Run(t *testing.T) {
 		}},
 		VMRunner:      vmRunner,
 		SessionRunner: sessionRunner,
-		Config:        &config.Config{},
+		Config:        &SandboxConfig{},
 		EnvProvider:   &mockEnvProvider{vars: []string{"TEST_KEY=secret123", "OTHER=foo"}},
 		Logger:        testLogger(),
 	})
@@ -238,7 +237,7 @@ func TestSandboxRunner_Run_AgentNotFound(t *testing.T) {
 		Registry:      &mockRegistry{agents: map[string]agent.Agent{}},
 		VMRunner:      &mockVMRunner{},
 		SessionRunner: &mockSessionRunner{},
-		Config:        &config.Config{},
+		Config:        &SandboxConfig{},
 		EnvProvider:   &mockEnvProvider{},
 		Logger:        testLogger(),
 	})
@@ -268,7 +267,7 @@ func TestSandboxRunner_Run_CLIOverrides(t *testing.T) {
 		Registry:      &mockRegistry{agents: map[string]agent.Agent{"test": testAgent}},
 		VMRunner:      vmRunner,
 		SessionRunner: &mockSessionRunner{},
-		Config:        &config.Config{},
+		Config:        &SandboxConfig{},
 		EnvProvider:   &mockEnvProvider{},
 		Logger:        testLogger(),
 	})
@@ -315,7 +314,7 @@ func TestSandboxRunner_Run_ReviewEnabled_UsesSnapshotPath(t *testing.T) {
 		Registry:        &mockRegistry{agents: map[string]agent.Agent{"test": testAgent}},
 		VMRunner:        vmRunner,
 		SessionRunner:   &mockSessionRunner{},
-		Config:          &config.Config{},
+		Config:          &SandboxConfig{},
 		EnvProvider:     &mockEnvProvider{},
 		Logger:          testLogger(),
 		WorkspaceCloner: cloner,
@@ -353,7 +352,7 @@ func TestSandboxRunner_Run_ReviewDisabled_UsesOriginalPath(t *testing.T) {
 		Registry:      &mockRegistry{agents: map[string]agent.Agent{"test": testAgent}},
 		VMRunner:      vmRunner,
 		SessionRunner: &mockSessionRunner{},
-		Config:        &config.Config{},
+		Config:        &SandboxConfig{},
 		EnvProvider:   &mockEnvProvider{},
 		Logger:        testLogger(),
 	})
@@ -403,7 +402,7 @@ func TestSandboxRunner_Run_ReviewWithChanges_FlushesAccepted(t *testing.T) {
 		Registry:        &mockRegistry{agents: map[string]agent.Agent{"test": testAgent}},
 		VMRunner:        vmRunner,
 		SessionRunner:   &mockSessionRunner{},
-		Config:          &config.Config{},
+		Config:          &SandboxConfig{},
 		EnvProvider:     &mockEnvProvider{},
 		Logger:          testLogger(),
 		WorkspaceCloner: cloner,
@@ -452,7 +451,7 @@ func TestSandboxRunner_Run_ReviewEmptyDiff_SkipsReview(t *testing.T) {
 		Registry:        &mockRegistry{agents: map[string]agent.Agent{"test": testAgent}},
 		VMRunner:        &mockVMRunner{vm: mvm},
 		SessionRunner:   &mockSessionRunner{},
-		Config:          &config.Config{},
+		Config:          &SandboxConfig{},
 		EnvProvider:     &mockEnvProvider{},
 		Logger:          testLogger(),
 		WorkspaceCloner: cloner,
@@ -490,7 +489,7 @@ func TestSandboxRunner_Run_SnapshotCreationFails(t *testing.T) {
 		Registry:        &mockRegistry{agents: map[string]agent.Agent{"test": testAgent}},
 		VMRunner:        &mockVMRunner{vm: &mockVM{sshPort: 8888, sshKeyPath: "/tmp/key"}},
 		SessionRunner:   &mockSessionRunner{},
-		Config:          &config.Config{},
+		Config:          &SandboxConfig{},
 		EnvProvider:     &mockEnvProvider{},
 		Logger:          testLogger(),
 		WorkspaceCloner: cloner,
@@ -542,7 +541,7 @@ func TestSandboxRunner_Run_VMStoppedBeforeReview(t *testing.T) {
 		Registry:        &mockRegistry{agents: map[string]agent.Agent{"test": testAgent}},
 		VMRunner:        &mockVMRunner{vm: mvm},
 		SessionRunner:   &mockSessionRunner{},
-		Config:          &config.Config{},
+		Config:          &SandboxConfig{},
 		EnvProvider:     &mockEnvProvider{},
 		Logger:          testLogger(),
 		WorkspaceCloner: cloner,
@@ -588,7 +587,7 @@ func TestSandboxRunner_Run_NilMatcherDefaultsToNop(t *testing.T) {
 		Registry:        &mockRegistry{agents: map[string]agent.Agent{"test": testAgent}},
 		VMRunner:        &mockVMRunner{vm: mvm},
 		SessionRunner:   &mockSessionRunner{},
-		Config:          &config.Config{},
+		Config:          &SandboxConfig{},
 		EnvProvider:     &mockEnvProvider{},
 		Logger:          testLogger(),
 		WorkspaceCloner: cloner,
@@ -672,7 +671,7 @@ func TestSandboxRunner_Prepare_Success(t *testing.T) {
 		}},
 		VMRunner:        vmRunner,
 		SessionRunner:   &mockSessionRunner{},
-		Config:          &config.Config{},
+		Config:          &SandboxConfig{},
 		EnvProvider:     &mockEnvProvider{vars: []string{"TEST_KEY=secret123"}},
 		Logger:          testLogger(),
 		WorkspaceCloner: cloner,
@@ -709,7 +708,7 @@ func TestSandboxRunner_Prepare_AgentNotFound(t *testing.T) {
 		Registry:      &mockRegistry{agents: map[string]agent.Agent{}},
 		VMRunner:      vmRunner,
 		SessionRunner: &mockSessionRunner{},
-		Config:        &config.Config{},
+		Config:        &SandboxConfig{},
 		EnvProvider:   &mockEnvProvider{},
 		Logger:        testLogger(),
 	})
@@ -906,7 +905,7 @@ func TestSandboxRunner_LifecycleEndToEnd(t *testing.T) {
 		}},
 		VMRunner:        vmRunner,
 		SessionRunner:   sessionRunner,
-		Config:          &config.Config{},
+		Config:          &SandboxConfig{},
 		EnvProvider:     &mockEnvProvider{vars: []string{"KEY=val"}},
 		Logger:          testLogger(),
 		WorkspaceCloner: cloner,
