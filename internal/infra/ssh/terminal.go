@@ -118,11 +118,7 @@ func (s *InteractiveSession) Run(ctx context.Context, opts session.SessionOpts) 
 
 		// Handle terminal resize signals.
 		resizeCh := opts.Terminal.NotifyResize(sessionCtx)
-		go func() {
-			for newSize := range resizeCh {
-				_ = sshSession.WindowChange(newSize.Height, newSize.Width)
-			}
-		}()
+		go forwardResize(resizeCh, sshSession)
 	}
 
 	// Wire up I/O.
@@ -158,6 +154,12 @@ func (s *InteractiveSession) Run(ctx context.Context, opts session.SessionOpts) 
 		_ = sshSession.Close()
 		_ = client.Close()
 		return sessionCtx.Err()
+	}
+}
+
+func forwardResize(resizeCh <-chan session.TermSize, sshSession *ssh.Session) {
+	for newSize := range resizeCh {
+		_ = sshSession.WindowChange(newSize.Height, newSize.Width)
 	}
 }
 
@@ -199,27 +201,38 @@ func (s *InteractiveSession) setupAgentForwarding(ctx context.Context, client *s
 					continue
 				}
 				go ssh.DiscardRequests(reqs)
-				go func() {
-					defer func() { _ = channel.Close() }()
-
-					agentConn, err := net.Dial("unix", authSock)
-					if err != nil {
-						s.logger.Debug("failed to connect to SSH agent for channel", "error", err)
-						return
-					}
-					defer func() { _ = agentConn.Close() }()
-
-					agentClient := agent.NewClient(agentConn)
-					if err := agent.ServeAgent(agentClient, channel); err != nil {
-						s.logger.Debug("agent forwarding session ended", "error", err)
-					}
-				}()
+				go s.serveAgentChannel(ctx, authSock, channel)
 			}
 		}
 	}()
 
 	s.logger.Debug("SSH agent forwarding configured")
 	return nil
+}
+
+func (s *InteractiveSession) serveAgentChannel(ctx context.Context, authSock string, channel ssh.Channel) {
+	defer func() { _ = channel.Close() }()
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = channel.Close()
+		case <-stopCh:
+		}
+	}()
+
+	agentConn, err := net.Dial("unix", authSock)
+	if err != nil {
+		s.logger.Debug("failed to connect to SSH agent for channel", "error", err)
+		return
+	}
+	defer func() { _ = agentConn.Close() }()
+
+	agentClient := agent.NewClient(agentConn)
+	if err := agent.ServeAgent(agentClient, channel); err != nil {
+		s.logger.Debug("agent forwarding session ended", "error", err)
+	}
 }
 
 // buildCommand constructs the shell command to run in the VM.
