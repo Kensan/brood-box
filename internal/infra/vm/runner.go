@@ -91,6 +91,7 @@ func (r *PropolisRunner) Start(ctx context.Context, cfg domvm.VMConfig) (domvm.V
 	opts := []propolis.Option{
 		propolis.WithName(cfg.Name),
 		propolis.WithDataDir(dataDir),
+		propolis.WithCleanDataDir(),
 		propolis.WithCPUs(cfg.CPUs),
 		propolis.WithMemory(cfg.Memory),
 		propolis.WithPorts(propolis.PortForward{Host: sshPort, Guest: 22}),
@@ -194,7 +195,7 @@ type propolisVM struct {
 
 func (v *propolisVM) Stop(ctx context.Context) error {
 	v.logger.Info("stopping sandbox VM")
-	err := v.vm.Stop(ctx)
+	err := v.vm.Remove(ctx)
 	// Clean up ephemeral SSH keys regardless of stop outcome.
 	_ = os.RemoveAll(v.sshKeyDir)
 	if err != nil {
