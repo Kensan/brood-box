@@ -28,6 +28,7 @@ infra/exclude/    infra/workspace/  infra/diff/     infra/review/
 
 guest/boot/  guest/mount/  guest/network/  guest/env/  guest/sshd/  guest/reaper/
    (guest VM packages — Linux only, runs inside microVM)
+   (note: these live in github.com/stacklok/propolis under guest/)
 ```
 
 ### Domain Layer (`pkg/domain/`)
