@@ -219,14 +219,15 @@ func (v *propolisVM) SSHKeyPath() string {
 	return v.sshKeyPath
 }
 
-// vmDataDir returns a per-VM data directory under ~/.config/apiary/<name>.
-// This isolates state files, logs, and locks so multiple VMs can run in parallel.
+// vmDataDir returns a per-VM data directory under ~/.config/apiary/vms/<name>/data.
+// This isolates state files and locks so multiple VMs can run in parallel.
+// The parent directory is used by apiary for logs and should not be cleaned.
 func vmDataDir(name string) (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("determining home directory: %w", err)
 	}
-	return filepath.Join(home, ".config", "apiary", "vms", name), nil
+	return filepath.Join(home, ".config", "apiary", "vms", name, "data"), nil
 }
 
 // pickFreePort asks the kernel for a free TCP port by binding to :0, reading
