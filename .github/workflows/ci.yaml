@@ -22,10 +22,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
@@ -35,27 +35,23 @@ jobs:
           git config --global url."https://${{ github.actor }}:${{ secrets.GO_MODULE_TOKEN }}@github.com/".insteadOf "https://github.com/"
 
       - name: Install Task
-        run: |
-          sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin
+        uses: go-task/setup-task@v1
 
       - name: Build apiary-init (for go:embed)
-        run: |
-          mkdir -p internal/infra/vm/initbin
-          CGO_ENABLED=0 GOOS=linux go build -ldflags "-s -w" -o internal/infra/vm/initbin/apiary-init ./cmd/apiary-init
+        run: task build-init
 
       - name: Run tests
-        run: |
-          task test
+        run: task test
 
   lint:
     name: Lint
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
@@ -65,27 +61,28 @@ jobs:
           git config --global url."https://${{ github.actor }}:${{ secrets.GO_MODULE_TOKEN }}@github.com/".insteadOf "https://github.com/"
 
       - name: Install Task
-        run: |
-          sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin
+        uses: go-task/setup-task@v1
+
+      - name: Install golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          install-only: true
 
       - name: Build apiary-init (for go:embed)
-        run: |
-          mkdir -p internal/infra/vm/initbin
-          CGO_ENABLED=0 GOOS=linux go build -ldflags "-s -w" -o internal/infra/vm/initbin/apiary-init ./cmd/apiary-init
+        run: task build-init
 
       - name: Run linter
-        run: |
-          task lint
+        run: task lint
 
   build:
     name: Build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
@@ -94,11 +91,8 @@ jobs:
         run: |
           git config --global url."https://${{ github.actor }}:${{ secrets.GO_MODULE_TOKEN }}@github.com/".insteadOf "https://github.com/"
 
-      - name: Build apiary-init (for go:embed)
-        run: |
-          mkdir -p internal/infra/vm/initbin
-          CGO_ENABLED=0 GOOS=linux go build -ldflags "-s -w" -o internal/infra/vm/initbin/apiary-init ./cmd/apiary-init
+      - name: Install Task
+        uses: go-task/setup-task@v1
 
-      - name: Verify compilation
-        run: |
-          CGO_ENABLED=0 go build ./...
+      - name: Build
+        run: task build
