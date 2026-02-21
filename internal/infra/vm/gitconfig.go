@@ -17,7 +17,7 @@ import (
 
 // InjectGitConfig returns a RootFS hook that writes git configuration
 // and credential helper scripts into the guest rootfs.
-func InjectGitConfig(identity domaingit.Identity, hasGitToken bool) func(string, *image.OCIConfig) error {
+func InjectGitConfig(identity domaingit.Identity, hasGitToken bool, chown ChownFunc) func(string, *image.OCIConfig) error {
 	return func(rootfsPath string, _ *image.OCIConfig) error {
 		// No-op if nothing to inject.
 		if !identity.IsComplete() && !hasGitToken {
@@ -32,7 +32,7 @@ func InjectGitConfig(identity domaingit.Identity, hasGitToken bool) func(string,
 		}
 
 		// Write .gitconfig.
-		return writeGitConfig(rootfsPath, identity, hasGitToken)
+		return writeGitConfig(rootfsPath, identity, hasGitToken, chown)
 	}
 }
 
@@ -79,9 +79,9 @@ esac
 
 // writeGitConfig writes a .gitconfig file into the sandbox user's home
 // directory inside the guest rootfs.
-func writeGitConfig(rootfsPath string, identity domaingit.Identity, hasGitToken bool) error {
+func writeGitConfig(rootfsPath string, identity domaingit.Identity, hasGitToken bool, chown ChownFunc) error {
 	homeDir := filepath.Join(rootfsPath, sandboxHome)
-	if err := mkdirAndChown(homeDir); err != nil {
+	if err := mkdirAndChown(homeDir, chown); err != nil {
 		return fmt.Errorf("creating sandbox home: %w", err)
 	}
 
@@ -110,7 +110,7 @@ func writeGitConfig(rootfsPath string, identity domaingit.Identity, hasGitToken 
 	if err := os.WriteFile(gitconfigPath, []byte(b.String()), 0o644); err != nil {
 		return fmt.Errorf("writing .gitconfig: %w", err)
 	}
-	return os.Chown(gitconfigPath, sandboxUID, sandboxGID)
+	return chown(gitconfigPath, sandboxUID, sandboxGID)
 }
 
 // sanitizeGitValue strips control characters (newlines, tabs, null bytes)

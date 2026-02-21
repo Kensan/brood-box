@@ -18,9 +18,10 @@ func TestInjectGitConfig_FullIdentityAndToken(t *testing.T) {
 	t.Parallel()
 
 	rootfs := setupRootfs(t)
+	chown, getCalls := recordingChown()
 	identity := domaingit.Identity{Name: "Alice", Email: "alice@example.com"}
 
-	hook := InjectGitConfig(identity, true)
+	hook := InjectGitConfig(identity, true, chown)
 	err := hook(rootfs, nil)
 	require.NoError(t, err)
 
@@ -39,15 +40,24 @@ func TestInjectGitConfig_FullIdentityAndToken(t *testing.T) {
 	helperPath := filepath.Join(rootfs, "usr", "local", "bin", "git-credential-apiary")
 	_, err = os.Stat(helperPath)
 	assert.NoError(t, err)
+
+	// Verify chown was called with sandbox UID/GID.
+	calls := getCalls()
+	require.NotEmpty(t, calls, "chown must be called")
+	for _, c := range calls {
+		assert.Equal(t, sandboxUID, c.UID)
+		assert.Equal(t, sandboxGID, c.GID)
+	}
 }
 
 func TestInjectGitConfig_IdentityOnly(t *testing.T) {
 	t.Parallel()
 
 	rootfs := setupRootfs(t)
+	chown, _ := recordingChown()
 	identity := domaingit.Identity{Name: "Bob", Email: "bob@example.com"}
 
-	hook := InjectGitConfig(identity, false)
+	hook := InjectGitConfig(identity, false, chown)
 	err := hook(rootfs, nil)
 	require.NoError(t, err)
 
@@ -70,9 +80,10 @@ func TestInjectGitConfig_TokenOnly(t *testing.T) {
 	t.Parallel()
 
 	rootfs := setupRootfs(t)
+	chown, _ := recordingChown()
 	identity := domaingit.Identity{} // empty — not complete
 
-	hook := InjectGitConfig(identity, true)
+	hook := InjectGitConfig(identity, true, chown)
 	err := hook(rootfs, nil)
 	require.NoError(t, err)
 
@@ -94,9 +105,10 @@ func TestInjectGitConfig_NoOp(t *testing.T) {
 	t.Parallel()
 
 	rootfs := setupRootfs(t)
+	chown, getCalls := recordingChown()
 	identity := domaingit.Identity{} // empty
 
-	hook := InjectGitConfig(identity, false)
+	hook := InjectGitConfig(identity, false, chown)
 	err := hook(rootfs, nil)
 	require.NoError(t, err)
 
@@ -107,6 +119,8 @@ func TestInjectGitConfig_NoOp(t *testing.T) {
 	// No credential helper should be written.
 	_, err = os.Stat(filepath.Join(rootfs, "usr", "local", "bin", "git-credential-apiary"))
 	assert.True(t, os.IsNotExist(err), "credential helper should not exist")
+
+	assert.Empty(t, getCalls(), "chown should not be called for no-op")
 }
 
 func TestCredentialHelper_Executable(t *testing.T) {

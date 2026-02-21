@@ -13,6 +13,10 @@ import (
 	toml "github.com/pelletier/go-toml/v2"
 )
 
+// ChownFunc abstracts file ownership changes for testability.
+// Production code passes os.Chown; tests can pass a recording mock.
+type ChownFunc func(path string, uid, gid int) error
+
 // sandboxHome is the home directory of the sandbox user inside the guest.
 // Config files are written here because /workspace is mounted via virtiofs
 // and would shadow anything written into the rootfs at that path.
@@ -36,7 +40,7 @@ type claudeCodeServer struct {
 
 // injectClaudeCodeMCP merges an MCP server entry into ~/.claude.json,
 // preserving any pre-existing keys (auth tokens, onboarding flags, etc.).
-func injectClaudeCodeMCP(rootfsPath, gatewayIP string, port uint16) error {
+func injectClaudeCodeMCP(rootfsPath, gatewayIP string, port uint16, chown ChownFunc) error {
 	servers := map[string]claudeCodeServer{
 		"sandbox-tools": {
 			Type: "http",
@@ -45,11 +49,11 @@ func injectClaudeCodeMCP(rootfsPath, gatewayIP string, port uint16) error {
 	}
 
 	homeDir := filepath.Join(rootfsPath, sandboxHome)
-	if err := mkdirAndChown(homeDir); err != nil {
+	if err := mkdirAndChown(homeDir, chown); err != nil {
 		return err
 	}
 
-	return mergeJSONKey(homeDir, ".claude.json", "mcpServers", servers)
+	return mergeJSONKey(homeDir, ".claude.json", "mcpServers", servers, chown)
 }
 
 // --- Codex ---
@@ -58,11 +62,11 @@ func injectClaudeCodeMCP(rootfsPath, gatewayIP string, port uint16) error {
 
 // injectCodexMCP merges an MCP server entry into ~/.codex/config.toml,
 // preserving any pre-existing TOML sections.
-func injectCodexMCP(rootfsPath, gatewayIP string, port uint16) error {
+func injectCodexMCP(rootfsPath, gatewayIP string, port uint16, chown ChownFunc) error {
 	mcpURL := fmt.Sprintf("http://%s:%d/mcp", gatewayIP, port)
 
 	codexDir := filepath.Join(rootfsPath, sandboxHome, ".codex")
-	if err := mkdirAndChown(codexDir); err != nil {
+	if err := mkdirAndChown(codexDir, chown); err != nil {
 		return fmt.Errorf("creating ~/.codex dir: %w", err)
 	}
 
@@ -70,7 +74,7 @@ func injectCodexMCP(rootfsPath, gatewayIP string, port uint16) error {
 		"sandbox-tools": map[string]any{
 			"url": mcpURL,
 		},
-	})
+	}, chown)
 }
 
 // --- OpenCode ---
@@ -91,7 +95,7 @@ type openCodeServer struct {
 
 // injectOpenCodeMCP merges an MCP server entry into ~/.config/opencode/opencode.json,
 // preserving any pre-existing keys.
-func injectOpenCodeMCP(rootfsPath, gatewayIP string, port uint16) error {
+func injectOpenCodeMCP(rootfsPath, gatewayIP string, port uint16, chown ChownFunc) error {
 	servers := map[string]openCodeServer{
 		"sandbox-tools": {
 			Type:    "remote",
@@ -101,11 +105,11 @@ func injectOpenCodeMCP(rootfsPath, gatewayIP string, port uint16) error {
 	}
 
 	opencodeDir := filepath.Join(rootfsPath, sandboxHome, ".config", "opencode")
-	if err := mkdirAndChown(opencodeDir); err != nil {
+	if err := mkdirAndChown(opencodeDir, chown); err != nil {
 		return fmt.Errorf("creating ~/.config/opencode dir: %w", err)
 	}
 
-	return mergeJSONKey(opencodeDir, "opencode.json", "mcp", servers)
+	return mergeJSONKey(opencodeDir, "opencode.json", "mcp", servers, chown)
 }
 
 // --- helpers ---
@@ -118,7 +122,7 @@ const (
 // mergeJSONKey reads an existing JSON file (if any) at dir/filename, sets
 // the given top-level key to value, and writes the result back. If the file
 // does not exist, a new object with just {key: value} is created.
-func mergeJSONKey(dir, filename, key string, value any) error {
+func mergeJSONKey(dir, filename, key string, value any, chown ChownFunc) error {
 	path := filepath.Join(dir, filename)
 
 	existing := make(map[string]json.RawMessage)
@@ -145,13 +149,13 @@ func mergeJSONKey(dir, filename, key string, value any) error {
 		return fmt.Errorf("writing %s: %w", filename, err)
 	}
 
-	return os.Chown(path, sandboxUID, sandboxGID)
+	return chown(path, sandboxUID, sandboxGID)
 }
 
 // mergeTOMLKey reads an existing TOML file (if any) at dir/filename, sets
 // the given top-level key to value, and writes the result back. If the file
 // does not exist, a new document with just [key] is created.
-func mergeTOMLKey(dir, filename, key string, value any) error {
+func mergeTOMLKey(dir, filename, key string, value any, chown ChownFunc) error {
 	path := filepath.Join(dir, filename)
 
 	existing := make(map[string]any)
@@ -174,14 +178,14 @@ func mergeTOMLKey(dir, filename, key string, value any) error {
 		return fmt.Errorf("writing %s: %w", filename, err)
 	}
 
-	return os.Chown(path, sandboxUID, sandboxGID)
+	return chown(path, sandboxUID, sandboxGID)
 }
 
 // mkdirAndChown creates a directory tree and chowns every created component
 // to the sandbox user.
-func mkdirAndChown(dir string) error {
+func mkdirAndChown(dir string, chown ChownFunc) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	return os.Chown(dir, sandboxUID, sandboxGID)
+	return chown(dir, sandboxUID, sandboxGID)
 }

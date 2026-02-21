@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	toml "github.com/pelletier/go-toml/v2"
@@ -15,6 +16,32 @@ import (
 
 	"github.com/stacklok/apiary/pkg/domain/agent"
 )
+
+// chownCall records a single chown invocation.
+type chownCall struct {
+	Path string
+	UID  int
+	GID  int
+}
+
+// recordingChown returns a ChownFunc that records calls and a function
+// to retrieve the recorded calls. Safe for concurrent use.
+func recordingChown() (ChownFunc, func() []chownCall) {
+	var mu sync.Mutex
+	var calls []chownCall
+	fn := func(path string, uid, gid int) error {
+		mu.Lock()
+		defer mu.Unlock()
+		calls = append(calls, chownCall{Path: path, UID: uid, GID: gid})
+		return nil
+	}
+	get := func() []chownCall {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]chownCall{}, calls...)
+	}
+	return fn, get
+}
 
 func TestInjectMCPConfig_Dispatch(t *testing.T) {
 	t.Parallel()
@@ -45,8 +72,9 @@ func TestInjectMCPConfig_Dispatch(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			rootfs := setupRootfs(t)
+			chown, _ := recordingChown()
 
-			hook := InjectMCPConfig(tt.format, "192.168.127.1", 4483)
+			hook := InjectMCPConfig(tt.format, "192.168.127.1", 4483, chown)
 			err := hook(rootfs, nil)
 			require.NoError(t, err)
 
@@ -60,8 +88,9 @@ func TestInjectMCPConfig_NoneFormat_NoOp(t *testing.T) {
 	t.Parallel()
 
 	rootfs := setupRootfs(t)
+	chown, getCalls := recordingChown()
 
-	hook := InjectMCPConfig(agent.MCPConfigFormatNone, "192.168.127.1", 4483)
+	hook := InjectMCPConfig(agent.MCPConfigFormatNone, "192.168.127.1", 4483, chown)
 	err := hook(rootfs, nil)
 	require.NoError(t, err)
 
@@ -69,23 +98,27 @@ func TestInjectMCPConfig_NoneFormat_NoOp(t *testing.T) {
 	entries, err := os.ReadDir(filepath.Join(rootfs, sandboxHome))
 	require.NoError(t, err)
 	assert.Empty(t, entries)
+	assert.Empty(t, getCalls(), "chown should not be called for no-op format")
 }
 
 func TestInjectMCPConfig_UnknownFormat_NoOp(t *testing.T) {
 	t.Parallel()
 
 	rootfs := setupRootfs(t)
+	chown, getCalls := recordingChown()
 
-	hook := InjectMCPConfig("unknown-agent", "192.168.127.1", 4483)
+	hook := InjectMCPConfig("unknown-agent", "192.168.127.1", 4483, chown)
 	err := hook(rootfs, nil)
 	require.NoError(t, err)
+	assert.Empty(t, getCalls(), "chown should not be called for unknown format")
 }
 
 func TestInjectClaudeCodeMCP(t *testing.T) {
 	t.Parallel()
 
 	rootfs := setupRootfs(t)
-	err := injectClaudeCodeMCP(rootfs, "192.168.127.1", 4483)
+	chown, getCalls := recordingChown()
+	err := injectClaudeCodeMCP(rootfs, "192.168.127.1", 4483, chown)
 	require.NoError(t, err)
 
 	data, err := os.ReadFile(filepath.Join(rootfs, sandboxHome, ".claude.json"))
@@ -98,13 +131,21 @@ func TestInjectClaudeCodeMCP(t *testing.T) {
 	srv := cfg.MCPServers["sandbox-tools"]
 	assert.Equal(t, "http", srv.Type)
 	assert.Equal(t, "http://192.168.127.1:4483/mcp", srv.URL)
+
+	calls := getCalls()
+	require.NotEmpty(t, calls, "chown must be called")
+	for _, c := range calls {
+		assert.Equal(t, sandboxUID, c.UID)
+		assert.Equal(t, sandboxGID, c.GID)
+	}
 }
 
 func TestInjectClaudeCodeMCP_CustomPort(t *testing.T) {
 	t.Parallel()
 
 	rootfs := setupRootfs(t)
-	err := injectClaudeCodeMCP(rootfs, "10.0.0.1", 9999)
+	chown, _ := recordingChown()
+	err := injectClaudeCodeMCP(rootfs, "10.0.0.1", 9999, chown)
 	require.NoError(t, err)
 
 	data, err := os.ReadFile(filepath.Join(rootfs, sandboxHome, ".claude.json"))
@@ -121,7 +162,8 @@ func TestInjectClaudeCodeMCP_NoExtraFields(t *testing.T) {
 	t.Parallel()
 
 	rootfs := setupRootfs(t)
-	err := injectClaudeCodeMCP(rootfs, "192.168.127.1", 4483)
+	chown, _ := recordingChown()
+	err := injectClaudeCodeMCP(rootfs, "192.168.127.1", 4483, chown)
 	require.NoError(t, err)
 
 	data, err := os.ReadFile(filepath.Join(rootfs, sandboxHome, ".claude.json"))
@@ -145,7 +187,8 @@ func TestInjectCodexMCP(t *testing.T) {
 	t.Parallel()
 
 	rootfs := setupRootfs(t)
-	err := injectCodexMCP(rootfs, "192.168.127.1", 4483)
+	chown, getCalls := recordingChown()
+	err := injectCodexMCP(rootfs, "192.168.127.1", 4483, chown)
 	require.NoError(t, err)
 
 	data, err := os.ReadFile(filepath.Join(rootfs, sandboxHome, ".codex", "config.toml"))
@@ -154,13 +197,21 @@ func TestInjectCodexMCP(t *testing.T) {
 	content := string(data)
 	assert.Contains(t, content, "[mcp_servers.sandbox-tools]")
 	assert.Contains(t, content, `url = 'http://192.168.127.1:4483/mcp'`)
+
+	calls := getCalls()
+	require.NotEmpty(t, calls, "chown must be called")
+	for _, c := range calls {
+		assert.Equal(t, sandboxUID, c.UID)
+		assert.Equal(t, sandboxGID, c.GID)
+	}
 }
 
 func TestInjectCodexMCP_CustomPort(t *testing.T) {
 	t.Parallel()
 
 	rootfs := setupRootfs(t)
-	err := injectCodexMCP(rootfs, "10.0.0.1", 8080)
+	chown, _ := recordingChown()
+	err := injectCodexMCP(rootfs, "10.0.0.1", 8080, chown)
 	require.NoError(t, err)
 
 	data, err := os.ReadFile(filepath.Join(rootfs, sandboxHome, ".codex", "config.toml"))
@@ -173,7 +224,8 @@ func TestInjectCodexMCP_ValidTOML(t *testing.T) {
 	t.Parallel()
 
 	rootfs := setupRootfs(t)
-	err := injectCodexMCP(rootfs, "192.168.127.1", 4483)
+	chown, _ := recordingChown()
+	err := injectCodexMCP(rootfs, "192.168.127.1", 4483, chown)
 	require.NoError(t, err)
 
 	data, err := os.ReadFile(filepath.Join(rootfs, sandboxHome, ".codex", "config.toml"))
@@ -188,7 +240,8 @@ func TestInjectOpenCodeMCP(t *testing.T) {
 	t.Parallel()
 
 	rootfs := setupRootfs(t)
-	err := injectOpenCodeMCP(rootfs, "192.168.127.1", 4483)
+	chown, getCalls := recordingChown()
+	err := injectOpenCodeMCP(rootfs, "192.168.127.1", 4483, chown)
 	require.NoError(t, err)
 
 	data, err := os.ReadFile(filepath.Join(rootfs, sandboxHome, ".config", "opencode", "opencode.json"))
@@ -202,13 +255,21 @@ func TestInjectOpenCodeMCP(t *testing.T) {
 	assert.Equal(t, "remote", srv.Type)
 	assert.Equal(t, "http://192.168.127.1:4483/mcp", srv.URL)
 	assert.True(t, srv.Enabled)
+
+	calls := getCalls()
+	require.NotEmpty(t, calls, "chown must be called")
+	for _, c := range calls {
+		assert.Equal(t, sandboxUID, c.UID)
+		assert.Equal(t, sandboxGID, c.GID)
+	}
 }
 
 func TestInjectOpenCodeMCP_CustomPort(t *testing.T) {
 	t.Parallel()
 
 	rootfs := setupRootfs(t)
-	err := injectOpenCodeMCP(rootfs, "10.0.0.1", 7777)
+	chown, _ := recordingChown()
+	err := injectOpenCodeMCP(rootfs, "10.0.0.1", 7777, chown)
 	require.NoError(t, err)
 
 	data, err := os.ReadFile(filepath.Join(rootfs, sandboxHome, ".config", "opencode", "opencode.json"))
@@ -224,7 +285,8 @@ func TestInjectOpenCodeMCP_UsesCorrectTopLevelKey(t *testing.T) {
 	t.Parallel()
 
 	rootfs := setupRootfs(t)
-	err := injectOpenCodeMCP(rootfs, "192.168.127.1", 4483)
+	chown, _ := recordingChown()
+	err := injectOpenCodeMCP(rootfs, "192.168.127.1", 4483, chown)
 	require.NoError(t, err)
 
 	data, err := os.ReadFile(filepath.Join(rootfs, sandboxHome, ".config", "opencode", "opencode.json"))
@@ -242,7 +304,8 @@ func TestInjectOpenCodeMCP_ServerTypeIsRemote(t *testing.T) {
 	t.Parallel()
 
 	rootfs := setupRootfs(t)
-	err := injectOpenCodeMCP(rootfs, "192.168.127.1", 4483)
+	chown, _ := recordingChown()
+	err := injectOpenCodeMCP(rootfs, "192.168.127.1", 4483, chown)
 	require.NoError(t, err)
 
 	data, err := os.ReadFile(filepath.Join(rootfs, sandboxHome, ".config", "opencode", "opencode.json"))
@@ -258,6 +321,8 @@ func TestInjectOpenCodeMCP_ServerTypeIsRemote(t *testing.T) {
 func TestMCPConfigFilePermissions(t *testing.T) {
 	t.Parallel()
 
+	chown, _ := recordingChown()
+
 	tests := []struct {
 		name   string
 		inject func(string) error
@@ -265,17 +330,17 @@ func TestMCPConfigFilePermissions(t *testing.T) {
 	}{
 		{
 			name:   "claude-code",
-			inject: func(root string) error { return injectClaudeCodeMCP(root, "127.0.0.1", 4483) },
+			inject: func(root string) error { return injectClaudeCodeMCP(root, "127.0.0.1", 4483, chown) },
 			path:   "home/sandbox/.claude.json",
 		},
 		{
 			name:   "codex",
-			inject: func(root string) error { return injectCodexMCP(root, "127.0.0.1", 4483) },
+			inject: func(root string) error { return injectCodexMCP(root, "127.0.0.1", 4483, chown) },
 			path:   "home/sandbox/.codex/config.toml",
 		},
 		{
 			name:   "opencode",
-			inject: func(root string) error { return injectOpenCodeMCP(root, "127.0.0.1", 4483) },
+			inject: func(root string) error { return injectOpenCodeMCP(root, "127.0.0.1", 4483, chown) },
 			path:   "home/sandbox/.config/opencode/opencode.json",
 		},
 	}
@@ -302,13 +367,14 @@ func TestInjectClaudeCodeMCP_PreservesExistingKeys(t *testing.T) {
 	t.Parallel()
 
 	rootfs := setupRootfs(t)
+	chown, _ := recordingChown()
 	configPath := filepath.Join(rootfs, sandboxHome, ".claude.json")
 
 	// Pre-populate with existing user config.
 	existing := `{"hasCompletedOnboarding": true, "theme": "dark"}`
 	require.NoError(t, os.WriteFile(configPath, []byte(existing), 0o644))
 
-	err := injectClaudeCodeMCP(rootfs, "192.168.127.1", 4483)
+	err := injectClaudeCodeMCP(rootfs, "192.168.127.1", 4483, chown)
 	require.NoError(t, err)
 
 	data, err := os.ReadFile(configPath)
@@ -330,13 +396,14 @@ func TestInjectClaudeCodeMCP_OverwritesExistingMCPServers(t *testing.T) {
 	t.Parallel()
 
 	rootfs := setupRootfs(t)
+	chown, _ := recordingChown()
 	configPath := filepath.Join(rootfs, sandboxHome, ".claude.json")
 
 	// Pre-populate with a stale MCP server entry.
 	stale := `{"mcpServers": {"old-server": {"type": "http", "url": "http://old:1234/mcp"}}}`
 	require.NoError(t, os.WriteFile(configPath, []byte(stale), 0o644))
 
-	err := injectClaudeCodeMCP(rootfs, "192.168.127.1", 4483)
+	err := injectClaudeCodeMCP(rootfs, "192.168.127.1", 4483, chown)
 	require.NoError(t, err)
 
 	data, err := os.ReadFile(configPath)
@@ -354,6 +421,7 @@ func TestInjectOpenCodeMCP_PreservesExistingKeys(t *testing.T) {
 	t.Parallel()
 
 	rootfs := setupRootfs(t)
+	chown, _ := recordingChown()
 	opencodeDir := filepath.Join(rootfs, sandboxHome, ".config", "opencode")
 	require.NoError(t, os.MkdirAll(opencodeDir, 0o755))
 	configPath := filepath.Join(opencodeDir, "opencode.json")
@@ -362,7 +430,7 @@ func TestInjectOpenCodeMCP_PreservesExistingKeys(t *testing.T) {
 	existing := `{"theme": "gruvbox", "editor": "nvim"}`
 	require.NoError(t, os.WriteFile(configPath, []byte(existing), 0o644))
 
-	err := injectOpenCodeMCP(rootfs, "192.168.127.1", 4483)
+	err := injectOpenCodeMCP(rootfs, "192.168.127.1", 4483, chown)
 	require.NoError(t, err)
 
 	data, err := os.ReadFile(configPath)
@@ -383,6 +451,7 @@ func TestInjectCodexMCP_PreservesExistingSections(t *testing.T) {
 	t.Parallel()
 
 	rootfs := setupRootfs(t)
+	chown, _ := recordingChown()
 	codexDir := filepath.Join(rootfs, sandboxHome, ".codex")
 	require.NoError(t, os.MkdirAll(codexDir, 0o755))
 	configPath := filepath.Join(codexDir, "config.toml")
@@ -391,7 +460,7 @@ func TestInjectCodexMCP_PreservesExistingSections(t *testing.T) {
 	existing := "[some_other_section]\nfoo = \"bar\"\n"
 	require.NoError(t, os.WriteFile(configPath, []byte(existing), 0o644))
 
-	err := injectCodexMCP(rootfs, "192.168.127.1", 4483)
+	err := injectCodexMCP(rootfs, "192.168.127.1", 4483, chown)
 	require.NoError(t, err)
 
 	data, err := os.ReadFile(configPath)

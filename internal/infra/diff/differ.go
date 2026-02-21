@@ -209,7 +209,7 @@ const maxDiffFileSize = 10 * 1024 * 1024
 // computeDiff generates a unified diff between two files.
 func computeDiff(origPath, snapPath, relPath string) (string, error) {
 	// Check sizes before loading to prevent OOM on large files.
-	if tooLarge, msg := checkFileSize(origPath, snapPath, relPath); tooLarge {
+	if tooLarge, msg := checkFileSize(origPath, snapPath); tooLarge {
 		return msg, nil
 	}
 
@@ -233,7 +233,7 @@ func computeDiff(origPath, snapPath, relPath string) (string, error) {
 	patches := dmp.PatchMake(string(origData), diffs)
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("--- a/%s\n+++ b/%s\n", relPath, relPath))
+	fmt.Fprintf(&sb, "--- a/%s\n+++ b/%s\n", relPath, relPath)
 	for _, p := range patches {
 		sb.WriteString(p.String())
 	}
@@ -261,7 +261,7 @@ func computeAddedDiff(snapPath, relPath string) (string, error) {
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("--- /dev/null\n+++ b/%s\n", relPath))
+	fmt.Fprintf(&sb, "--- /dev/null\n+++ b/%s\n", relPath)
 
 	content := string(data)
 	if len(content) > 0 && content[len(content)-1] == '\n' {
@@ -277,7 +277,7 @@ func computeAddedDiff(snapPath, relPath string) (string, error) {
 }
 
 // checkFileSize returns true if either file exceeds maxDiffFileSize.
-func checkFileSize(origPath, snapPath, relPath string) (bool, string) {
+func checkFileSize(origPath, snapPath string) (bool, string) {
 	for _, p := range []string{origPath, snapPath} {
 		info, err := os.Stat(p)
 		if err != nil {
