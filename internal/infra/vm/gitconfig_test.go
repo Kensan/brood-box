@@ -6,6 +6,7 @@ package vm
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -136,6 +137,41 @@ func TestCredentialHelper_Executable(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, os.FileMode(0o755), info.Mode().Perm(),
 		"credential helper must be executable (0755)")
+}
+
+func TestSanitizeGitValue(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{name: "normal name", input: "Alice Smith", expected: "Alice Smith"},
+		{name: "normal email", input: "alice@example.com", expected: "alice@example.com"},
+		{name: "UTF-8 latin", input: "José García", expected: "José García"},
+		{name: "CJK name", input: "田中太郎", expected: "田中太郎"},
+		{
+			name:     "newline and section injection",
+			input:    "Alice\n[credential]\nhelper=evil",
+			expected: "Alicecredentialhelper=evil",
+		},
+		{name: "backslash stripped", input: `value\continuation`, expected: "valuecontinuation"},
+		{name: "hash comment stripped", input: "name # comment", expected: "name  comment"},
+		{name: "semicolon comment stripped", input: "name ; comment", expected: "name  comment"},
+		{name: "brackets stripped", input: "a]b[c", expected: "abc"},
+		{name: "double quote stripped", input: `Alice "Bob"`, expected: "Alice Bob"},
+		{name: "exceeds max length", input: strings.Repeat("a", maxGitValueLength+1), expected: ""},
+		{name: "empty input", input: "", expected: ""},
+		{name: "all control chars", input: "\t\n\r", expected: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.expected, sanitizeGitValue(tt.input))
+		})
+	}
 }
 
 func TestCredentialHelper_Content(t *testing.T) {

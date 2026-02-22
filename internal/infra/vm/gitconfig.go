@@ -113,13 +113,24 @@ func writeGitConfig(rootfsPath string, identity domaingit.Identity, hasGitToken 
 	return chown(gitconfigPath, sandboxUID, sandboxGID)
 }
 
-// sanitizeGitValue strips control characters (newlines, tabs, null bytes)
-// from a string to prevent injection of arbitrary git config sections.
-// Returns empty string if the entire value is control characters.
+const maxGitValueLength = 512
+
+// sanitizeGitValue strips characters that have syntactic meaning in git
+// config format to prevent injection of arbitrary sections or directives.
+// Control characters, backslash (line continuation), brackets (section
+// headers), double quotes (value quoting), and comment markers (#, ;)
+// are removed. Returns empty string if the input exceeds maxGitValueLength.
 func sanitizeGitValue(s string) string {
+	if len(s) > maxGitValueLength {
+		return ""
+	}
 	return strings.Map(func(r rune) rune {
 		if unicode.IsControl(r) {
-			return -1 // drop
+			return -1
+		}
+		switch r {
+		case '\\', '[', ']', '#', ';', '"':
+			return -1
 		}
 		return r
 	}, s)
