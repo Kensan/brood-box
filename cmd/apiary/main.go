@@ -196,6 +196,11 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 	ctx, cancel := signal.NotifyContext(parentCtx, syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
+	// Validate agent name before using it in filesystem paths or VM names.
+	if err := agent.ValidateName(agentName); err != nil {
+		return fmt.Errorf("invalid agent name: %w", err)
+	}
+
 	// Derive VM name early so logs land in the per-VM directory.
 	vmName := "sandbox-" + agentName
 
@@ -266,18 +271,27 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 
 	if cfg.Agents != nil {
 		// Register custom agents from config (only those not already built-in).
+		// Warnings use fmt.Fprintf(os.Stderr) instead of slog because the logger
+		// writes to a file — users would not see invalid agent name warnings
+		// unless they manually inspected the log.
 		for name, override := range cfg.Agents {
+			if err := agent.ValidateName(name); err != nil {
+				_, _ = fmt.Fprintf(os.Stderr, "Warning: skipping custom agent %q: %s\n", name, err)
+				continue
+			}
 			if _, err := registry.Get(name); err != nil {
 				// Not a built-in agent — register as custom if it has an image.
 				if override.Image != "" {
-					registry.Add(agent.Agent{
+					if addErr := registry.Add(agent.Agent{
 						Name:          name,
 						Image:         override.Image,
 						Command:       override.Command,
 						EnvForward:    override.EnvForward,
 						DefaultCPUs:   override.CPUs,
 						DefaultMemory: override.Memory,
-					})
+					}); addErr != nil {
+						_, _ = fmt.Fprintf(os.Stderr, "Warning: skipping custom agent %q: %s\n", name, addErr)
+					}
 				}
 			}
 		}

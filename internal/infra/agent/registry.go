@@ -5,6 +5,7 @@
 package agent
 
 import (
+	"fmt"
 	"sort"
 
 	domainagent "github.com/stacklok/apiary/pkg/domain/agent"
@@ -112,8 +113,13 @@ func NewRegistry() *Registry {
 }
 
 // Add registers or overrides an agent in the registry.
-func (r *Registry) Add(a domainagent.Agent) {
+// It validates the agent name before adding.
+func (r *Registry) Add(a domainagent.Agent) error {
+	if err := domainagent.ValidateName(a.Name); err != nil {
+		return fmt.Errorf("cannot register agent: %w", err)
+	}
 	r.agents[a.Name] = a
+	return nil
 }
 
 // Get returns the agent with the given name, or ErrNotFound.

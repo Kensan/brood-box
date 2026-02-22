@@ -6,9 +6,34 @@ package agent
 
 import (
 	"fmt"
+	"regexp"
 
 	"github.com/stacklok/apiary/pkg/domain/egress"
 )
+
+// MaxNameLength is the maximum allowed length for an agent name.
+const MaxNameLength = 64
+
+// agentNameRe matches valid agent names: starts with alphanumeric,
+// followed by alphanumerics, hyphens, or underscores.
+var agentNameRe = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*$`)
+
+// ValidateName checks that an agent name is safe for use in filesystem
+// paths and VM identifiers. It rejects empty strings, names starting
+// with non-alphanumeric characters, path traversal sequences, and
+// names exceeding MaxNameLength.
+func ValidateName(name string) error {
+	if name == "" {
+		return fmt.Errorf("agent name must not be empty")
+	}
+	if len(name) > MaxNameLength {
+		return fmt.Errorf("agent name too long (%d chars, max %d)", len(name), MaxNameLength)
+	}
+	if !agentNameRe.MatchString(name) {
+		return fmt.Errorf("invalid agent name %q: must start with a letter or digit and contain only letters, digits, hyphens, or underscores", name)
+	}
+	return nil
+}
 
 // MCPConfigFormat identifies how an agent consumes MCP server configuration.
 type MCPConfigFormat string
@@ -73,5 +98,5 @@ type ErrNotFound struct {
 }
 
 func (e *ErrNotFound) Error() string {
-	return fmt.Sprintf("agent not found: %s", e.Name)
+	return fmt.Sprintf("agent not found: %q", e.Name)
 }
