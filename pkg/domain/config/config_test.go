@@ -165,6 +165,36 @@ func TestMergeConfigs(t *testing.T) {
 			},
 		},
 		{
+			name:   "egress profile — empty global + local permissive blocked",
+			global: &Config{},
+			local: &Config{
+				Defaults: DefaultsConfig{EgressProfile: "permissive"},
+			},
+			want: &Config{
+				Defaults: DefaultsConfig{EgressProfile: "standard"},
+			},
+		},
+		{
+			name:   "egress profile — empty global + local standard stays standard",
+			global: &Config{},
+			local: &Config{
+				Defaults: DefaultsConfig{EgressProfile: "standard"},
+			},
+			want: &Config{
+				Defaults: DefaultsConfig{EgressProfile: "standard"},
+			},
+		},
+		{
+			name:   "egress profile — unrecognized local profile treated as standard",
+			global: &Config{},
+			local: &Config{
+				Defaults: DefaultsConfig{EgressProfile: "not-a-profile"},
+			},
+			want: &Config{
+				Defaults: DefaultsConfig{EgressProfile: "standard"},
+			},
+		},
+		{
 			name: "network allow_hosts are additive",
 			global: &Config{
 				Network: NetworkConfig{
@@ -390,6 +420,55 @@ func TestMerge(t *testing.T) {
 			},
 			override: AgentOverride{},
 			defaults: DefaultsConfig{EgressProfile: "locked"},
+			want: agent.Agent{
+				Name:                 "a",
+				Image:                "i:l",
+				Command:              []string{"c"},
+				DefaultEgressProfile: "locked",
+			},
+		},
+		{
+			name: "egress profile — permissive override blocked by standard agent",
+			agent: agent.Agent{
+				Name:                 "a",
+				Image:                "i:l",
+				Command:              []string{"c"},
+				DefaultEgressProfile: "standard",
+			},
+			override: AgentOverride{EgressProfile: "permissive"},
+			defaults: DefaultsConfig{},
+			want: agent.Agent{
+				Name:                 "a",
+				Image:                "i:l",
+				Command:              []string{"c"},
+				DefaultEgressProfile: "standard",
+			},
+		},
+		{
+			name: "egress profile — permissive override blocked when agent empty",
+			agent: agent.Agent{
+				Name:    "a",
+				Image:   "i:l",
+				Command: []string{"c"},
+			},
+			override: AgentOverride{EgressProfile: "permissive"},
+			defaults: DefaultsConfig{},
+			want: agent.Agent{
+				Name:                 "a",
+				Image:                "i:l",
+				Command:              []string{"c"},
+				DefaultEgressProfile: "standard",
+			},
+		},
+		{
+			name: "egress profile — locked override allowed when agent empty",
+			agent: agent.Agent{
+				Name:    "a",
+				Image:   "i:l",
+				Command: []string{"c"},
+			},
+			override: AgentOverride{EgressProfile: "locked"},
+			defaults: DefaultsConfig{},
 			want: agent.Agent{
 				Name:                 "a",
 				Image:                "i:l",

@@ -252,11 +252,14 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 		logger.Warn("review.enabled in local config is ignored for security — use --no-review or global config")
 	}
 	if localCfg != nil && localCfg.Defaults.EgressProfile != "" {
-		globalProfile := egress.ProfileName(cfg.Defaults.EgressProfile)
+		effectiveGlobal := egress.ProfileName(cfg.Defaults.EgressProfile)
+		if effectiveGlobal == "" {
+			effectiveGlobal = egress.ProfileStandard
+		}
 		localProfile := egress.ProfileName(localCfg.Defaults.EgressProfile)
-		if globalProfile.IsValid() && localProfile.IsValid() && egress.Stricter(globalProfile, localProfile) == globalProfile {
-			logger.Warn("egress_profile in local config cannot widen global — keeping global profile",
-				"global", globalProfile, "local", localProfile)
+		if localProfile.IsValid() && egress.Stricter(effectiveGlobal, localProfile) == effectiveGlobal {
+			logger.Warn("egress_profile in local config cannot widen — keeping effective profile",
+				"effective", effectiveGlobal, "local", localProfile)
 		}
 	}
 	cfg = domainconfig.MergeConfigs(cfg, localCfg)

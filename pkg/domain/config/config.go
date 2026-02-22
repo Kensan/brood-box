@@ -178,17 +178,17 @@ func MergeConfigs(global, local *Config) *Config {
 		result.Defaults.Memory = local.Defaults.Memory
 	}
 
-	// EgressProfile: local can only tighten (use Stricter). If local tries
-	// to widen, keep global value.
+	// EgressProfile: local can only tighten (use Stricter).
+	// Treat empty global as "standard" — the implicit default for all built-in agents.
 	if local.Defaults.EgressProfile != "" {
-		if result.Defaults.EgressProfile == "" {
-			result.Defaults.EgressProfile = local.Defaults.EgressProfile
-		} else {
-			result.Defaults.EgressProfile = string(egress.Stricter(
-				egress.ProfileName(result.Defaults.EgressProfile),
-				egress.ProfileName(local.Defaults.EgressProfile),
-			))
+		effectiveGlobal := egress.ProfileName(result.Defaults.EgressProfile)
+		if effectiveGlobal == "" {
+			effectiveGlobal = egress.ProfileStandard
 		}
+		result.Defaults.EgressProfile = string(egress.Stricter(
+			effectiveGlobal,
+			egress.ProfileName(local.Defaults.EgressProfile),
+		))
 	}
 
 	// Review.Enabled: local value is IGNORED (global preserved).
@@ -234,6 +234,7 @@ func MergeConfigs(global, local *Config) *Config {
 // Merge combines an agent definition with user overrides and defaults.
 // Override fields take precedence when non-zero. Defaults are used as fallback
 // when neither the agent nor the override specifies a value.
+// EgressProfile overrides can only tighten (not widen) the agent's profile.
 func Merge(a agent.Agent, override AgentOverride, defaults DefaultsConfig) agent.Agent {
 	result := a
 
@@ -263,9 +264,15 @@ func Merge(a agent.Agent, override AgentOverride, defaults DefaultsConfig) agent
 		result.DefaultMemory = defaults.Memory
 	}
 
-	// EgressProfile: override > agent default > global default > "standard"
+	// EgressProfile: override can only tighten the agent's built-in profile.
+	// Treat empty as "standard" — the security baseline for all agents.
 	if override.EgressProfile != "" {
-		result.DefaultEgressProfile = egress.ProfileName(override.EgressProfile)
+		overrideProfile := egress.ProfileName(override.EgressProfile)
+		current := result.DefaultEgressProfile
+		if current == "" {
+			current = egress.ProfileStandard
+		}
+		result.DefaultEgressProfile = egress.Stricter(current, overrideProfile)
 	}
 	if result.DefaultEgressProfile == "" && defaults.EgressProfile != "" {
 		result.DefaultEgressProfile = egress.ProfileName(defaults.EgressProfile)
