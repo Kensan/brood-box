@@ -355,8 +355,8 @@ func TestMCPConfigFilePermissions(t *testing.T) {
 
 			info, err := os.Stat(filepath.Join(rootfs, tt.path))
 			require.NoError(t, err)
-			assert.Equal(t, os.FileMode(0o644), info.Mode().Perm(),
-				"MCP config files should be world-readable (0644)")
+			assert.Equal(t, os.FileMode(0o600), info.Mode().Perm(),
+				"MCP config files should be owner-only (0600)")
 		})
 	}
 }

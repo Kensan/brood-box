@@ -13,19 +13,22 @@ import (
 )
 
 // Common dev infrastructure hosts shared across agents at the standard profile.
+//
+// Remaining wildcards and why they are necessary:
+//   - *.githubusercontent.com — GitHub CDN subdomains (raw., objects., avatars., etc.)
+//   - *.pypi.org — warehouse, upload, and test subdomains used by pip
+//   - *.docker.io — registry-1., auth., index. subdomains required for image pulls
 var devInfraHosts = []egress.Host{
 	{Name: "github.com", Ports: []uint16{443, 22}},
 	{Name: "api.github.com", Ports: []uint16{443}},
 	{Name: "*.githubusercontent.com", Ports: []uint16{443}},
 	{Name: "registry.npmjs.org", Ports: []uint16{443}},
-	{Name: "*.npmjs.org", Ports: []uint16{443}},
 	{Name: "pypi.org", Ports: []uint16{443}},
 	{Name: "*.pypi.org", Ports: []uint16{443}},
 	{Name: "proxy.golang.org", Ports: []uint16{443}},
 	{Name: "sum.golang.org", Ports: []uint16{443}},
 	{Name: "*.docker.io", Ports: []uint16{443}},
 	{Name: "ghcr.io", Ports: []uint16{443}},
-	{Name: "*.sentry.io", Ports: []uint16{443}},
 	{Name: "sentry.io", Ports: []uint16{443}},
 }
 

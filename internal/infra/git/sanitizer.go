@@ -65,7 +65,7 @@ func (s *ConfigSanitizer) Process(_ context.Context, originalPath, snapshotPath 
 	}
 
 	dstPath := filepath.Join(dstDir, "config")
-	if err := os.WriteFile(dstPath, []byte(sanitized), 0o644); err != nil {
+	if err := os.WriteFile(dstPath, []byte(sanitized), 0o600); err != nil {
 		return fmt.Errorf("writing sanitized git config: %w", err)
 	}
 

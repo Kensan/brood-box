@@ -5,6 +5,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -138,6 +139,24 @@ func TestWarnLocalConfigOverrides(t *testing.T) {
 			global:   defaultGlobal,
 			expected: wrapWarnings("sets default memory: 131072 MiB"),
 		},
+		{
+			name: "defaults CPUs clamped",
+			local: &domainconfig.Config{
+				Defaults: domainconfig.DefaultsConfig{CPUs: 256},
+			},
+			global: defaultGlobal,
+			expected: wrapWarnings(fmt.Sprintf("sets default CPUs: 256 (clamped to %d)",
+				domainconfig.MaxCPUs)),
+		},
+		{
+			name: "defaults memory clamped",
+			local: &domainconfig.Config{
+				Defaults: domainconfig.DefaultsConfig{Memory: 999999},
+			},
+			global: defaultGlobal,
+			expected: wrapWarnings(fmt.Sprintf("sets default memory: 999999 MiB (clamped to %d MiB)",
+				domainconfig.MaxMemory)),
+		},
 		// --- Git ---
 		{
 			name: "git forward_token set",
@@ -226,6 +245,19 @@ func TestWarnLocalConfigOverrides(t *testing.T) {
 			expected: wrapWarnings(
 				"sets myagent CPUs: 128",
 				"sets myagent memory: 99999 MiB",
+			),
+		},
+		{
+			name: "agent CPUs and memory clamped",
+			local: &domainconfig.Config{
+				Agents: map[string]domainconfig.AgentOverride{
+					"myagent": {CPUs: 256, Memory: 999999},
+				},
+			},
+			global: defaultGlobal,
+			expected: wrapWarnings(
+				fmt.Sprintf("sets myagent CPUs: 256 (clamped to %d)", domainconfig.MaxCPUs),
+				fmt.Sprintf("sets myagent memory: 999999 MiB (clamped to %d MiB)", domainconfig.MaxMemory),
 			),
 		},
 		// --- Agent MCP override (CRITICAL-1 fix) ---

@@ -145,7 +145,7 @@ func mergeJSONKey(dir, filename, key string, value any, chown ChownFunc) error {
 		return fmt.Errorf("marshaling merged %s: %w", filename, err)
 	}
 
-	if err := os.WriteFile(path, append(merged, '\n'), 0o644); err != nil {
+	if err := os.WriteFile(path, append(merged, '\n'), 0o600); err != nil {
 		return fmt.Errorf("writing %s: %w", filename, err)
 	}
 
@@ -174,7 +174,7 @@ func mergeTOMLKey(dir, filename, key string, value any, chown ChownFunc) error {
 		return fmt.Errorf("marshaling merged %s: %w", filename, err)
 	}
 
-	if err := os.WriteFile(path, merged, 0o644); err != nil {
+	if err := os.WriteFile(path, merged, 0o600); err != nil {
 		return fmt.Errorf("writing %s: %w", filename, err)
 	}
 

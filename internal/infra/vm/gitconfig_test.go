@@ -193,3 +193,20 @@ func TestCredentialHelper_Content(t *testing.T) {
 	assert.Contains(t, content, "GH_TOKEN", "must reference GH_TOKEN")
 	assert.Contains(t, content, "x-access-token", "must use x-access-token username")
 }
+
+func TestGitConfigFilePermissions(t *testing.T) {
+	t.Parallel()
+
+	rootfs := setupRootfs(t)
+	chown, _ := recordingChown()
+	identity := domaingit.Identity{Name: "Alice", Email: "alice@example.com"}
+
+	hook := InjectGitConfig(identity, true, chown)
+	err := hook(rootfs, nil)
+	require.NoError(t, err)
+
+	info, err := os.Stat(filepath.Join(rootfs, sandboxHome, ".gitconfig"))
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm(),
+		"gitconfig should be owner-only (0600)")
+}

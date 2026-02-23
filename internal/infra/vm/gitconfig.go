@@ -107,7 +107,7 @@ func writeGitConfig(rootfsPath string, identity domaingit.Identity, hasGitToken 
 	}
 
 	gitconfigPath := filepath.Join(homeDir, ".gitconfig")
-	if err := os.WriteFile(gitconfigPath, []byte(b.String()), 0o644); err != nil {
+	if err := os.WriteFile(gitconfigPath, []byte(b.String()), 0o600); err != nil {
 		return fmt.Errorf("writing .gitconfig: %w", err)
 	}
 	return chown(gitconfigPath, sandboxUID, sandboxGID)

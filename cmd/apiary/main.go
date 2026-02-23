@@ -528,13 +528,13 @@ func openLogFile(override, vmName string) (string, *os.File, io.Closer, error) {
 			return "", nil, nil, fmt.Errorf("getting home dir: %w", err)
 		}
 		logDir := filepath.Join(home, ".config", "apiary", "vms", vmName)
-		if err := os.MkdirAll(logDir, 0o750); err != nil {
+		if err := os.MkdirAll(logDir, 0o700); err != nil {
 			return "", nil, nil, fmt.Errorf("creating log dir: %w", err)
 		}
 		logPath = filepath.Join(logDir, defaultLogFile)
 	}
 
-	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o640)
+	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
 		return logPath, nil, nil, err
 	}
@@ -605,10 +605,20 @@ func warnLocalConfigOverrides(w io.Writer, localCfg, globalCfg *domainconfig.Con
 
 	// Defaults.CPUs / Memory — resource overrides.
 	if localCfg.Defaults.CPUs > 0 {
-		warnings = append(warnings, fmt.Sprintf("sets default CPUs: %d", localCfg.Defaults.CPUs))
+		if localCfg.Defaults.CPUs > domainconfig.MaxCPUs {
+			warnings = append(warnings, fmt.Sprintf("sets default CPUs: %d (clamped to %d)",
+				localCfg.Defaults.CPUs, domainconfig.MaxCPUs))
+		} else {
+			warnings = append(warnings, fmt.Sprintf("sets default CPUs: %d", localCfg.Defaults.CPUs))
+		}
 	}
 	if localCfg.Defaults.Memory > 0 {
-		warnings = append(warnings, fmt.Sprintf("sets default memory: %d MiB", localCfg.Defaults.Memory))
+		if localCfg.Defaults.Memory > domainconfig.MaxMemory {
+			warnings = append(warnings, fmt.Sprintf("sets default memory: %d MiB (clamped to %d MiB)",
+				localCfg.Defaults.Memory, domainconfig.MaxMemory))
+		} else {
+			warnings = append(warnings, fmt.Sprintf("sets default memory: %d MiB", localCfg.Defaults.Memory))
+		}
 	}
 
 	// Network.AllowHosts — extra egress destinations.
@@ -652,10 +662,20 @@ func warnLocalConfigOverrides(w io.Writer, localCfg, globalCfg *domainconfig.Con
 			warnings = append(warnings, fmt.Sprintf("sets %s egress profile: %s", safeName, sanitizeValue(override.EgressProfile)))
 		}
 		if override.CPUs > 0 {
-			warnings = append(warnings, fmt.Sprintf("sets %s CPUs: %d", safeName, override.CPUs))
+			if override.CPUs > domainconfig.MaxCPUs {
+				warnings = append(warnings, fmt.Sprintf("sets %s CPUs: %d (clamped to %d)",
+					safeName, override.CPUs, domainconfig.MaxCPUs))
+			} else {
+				warnings = append(warnings, fmt.Sprintf("sets %s CPUs: %d", safeName, override.CPUs))
+			}
 		}
 		if override.Memory > 0 {
-			warnings = append(warnings, fmt.Sprintf("sets %s memory: %d MiB", safeName, override.Memory))
+			if override.Memory > domainconfig.MaxMemory {
+				warnings = append(warnings, fmt.Sprintf("sets %s memory: %d MiB (clamped to %d MiB)",
+					safeName, override.Memory, domainconfig.MaxMemory))
+			} else {
+				warnings = append(warnings, fmt.Sprintf("sets %s memory: %d MiB", safeName, override.Memory))
+			}
 		}
 		if override.MCP != nil {
 			if override.MCP.Enabled != nil {

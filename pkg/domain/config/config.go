@@ -103,6 +103,14 @@ type ReviewConfig struct {
 	ExcludePatterns []string `yaml:"exclude_patterns,omitempty"`
 }
 
+const (
+	// MaxCPUs is the upper bound for vCPU allocation.
+	MaxCPUs uint32 = 128
+
+	// MaxMemory is the upper bound for RAM allocation in MiB (128 GiB).
+	MaxMemory uint32 = 131072
+)
+
 // DefaultsConfig specifies default VM resource limits.
 type DefaultsConfig struct {
 	// CPUs is the default number of vCPUs.
@@ -155,6 +163,18 @@ type AgentOverride struct {
 	MCP *MCPConfig `yaml:"mcp,omitempty"`
 }
 
+// clampResources caps CPU and memory values to the configured maximums.
+// Zero values are passed through (they mean "use default").
+func clampResources(cpus, memory uint32) (uint32, uint32) {
+	if cpus > MaxCPUs {
+		cpus = MaxCPUs
+	}
+	if memory > MaxMemory {
+		memory = MaxMemory
+	}
+	return cpus, memory
+}
+
 // MergeConfigs merges a local (per-workspace) config into a global config.
 // Rules:
 //   - Scalars (CPUs, Memory): local overrides global when non-zero.
@@ -179,6 +199,11 @@ func MergeConfigs(global, local *Config) *Config {
 	if local.Defaults.Memory > 0 {
 		result.Defaults.Memory = local.Defaults.Memory
 	}
+
+	// Clamp resource values to configured maximums.
+	result.Defaults.CPUs, result.Defaults.Memory = clampResources(
+		result.Defaults.CPUs, result.Defaults.Memory,
+	)
 
 	// EgressProfile: local can only tighten (use Stricter).
 	// Treat empty global as "standard" — the implicit default for all built-in agents.
@@ -265,6 +290,11 @@ func Merge(a agent.Agent, override AgentOverride, defaults DefaultsConfig) agent
 	if result.DefaultMemory == 0 && defaults.Memory > 0 {
 		result.DefaultMemory = defaults.Memory
 	}
+
+	// Clamp resource values to configured maximums.
+	result.DefaultCPUs, result.DefaultMemory = clampResources(
+		result.DefaultCPUs, result.DefaultMemory,
+	)
 
 	// EgressProfile: override can only tighten the agent's built-in profile.
 	// Treat empty as "standard" — the security baseline for all agents.

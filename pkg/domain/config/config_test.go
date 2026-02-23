@@ -4,6 +4,7 @@
 package config
 
 import (
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -636,4 +637,185 @@ func TestGitConfig_Defaults(t *testing.T) {
 
 	cfg.ForwardSSHAgent = boolPtr(false)
 	assert.False(t, cfg.SSHAgentEnabled())
+}
+
+func TestMergeConfigs_ResourceBounds(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		global     *Config
+		local      *Config
+		wantCPUs   uint32
+		wantMemory uint32
+	}{
+		{
+			name:       "normal values pass through",
+			global:     &Config{Defaults: DefaultsConfig{CPUs: 4, Memory: 4096}},
+			local:      &Config{Defaults: DefaultsConfig{CPUs: 8, Memory: 8192}},
+			wantCPUs:   8,
+			wantMemory: 8192,
+		},
+		{
+			name:       "local CPUs exceed max — clamped",
+			global:     &Config{Defaults: DefaultsConfig{CPUs: 4, Memory: 2048}},
+			local:      &Config{Defaults: DefaultsConfig{CPUs: 256}},
+			wantCPUs:   MaxCPUs,
+			wantMemory: 2048,
+		},
+		{
+			name:       "local memory exceeds max — clamped",
+			global:     &Config{Defaults: DefaultsConfig{CPUs: 4, Memory: 2048}},
+			local:      &Config{Defaults: DefaultsConfig{Memory: 999999}},
+			wantCPUs:   4,
+			wantMemory: MaxMemory,
+		},
+		{
+			name:       "both exceed max — both clamped",
+			global:     &Config{},
+			local:      &Config{Defaults: DefaultsConfig{CPUs: 500, Memory: 500000}},
+			wantCPUs:   MaxCPUs,
+			wantMemory: MaxMemory,
+		},
+		{
+			name:       "zero local does not override global",
+			global:     &Config{Defaults: DefaultsConfig{CPUs: 4, Memory: 2048}},
+			local:      &Config{Defaults: DefaultsConfig{}},
+			wantCPUs:   4,
+			wantMemory: 2048,
+		},
+		{
+			name:       "at boundary — exactly max passes through",
+			global:     &Config{},
+			local:      &Config{Defaults: DefaultsConfig{CPUs: MaxCPUs, Memory: MaxMemory}},
+			wantCPUs:   MaxCPUs,
+			wantMemory: MaxMemory,
+		},
+		{
+			name:       "global exceeds max — clamped even without local override",
+			global:     &Config{Defaults: DefaultsConfig{CPUs: 200, Memory: 200000}},
+			local:      &Config{},
+			wantCPUs:   MaxCPUs,
+			wantMemory: MaxMemory,
+		},
+		{
+			name:       "one over one under — only over is clamped",
+			global:     &Config{Defaults: DefaultsConfig{CPUs: 4}},
+			local:      &Config{Defaults: DefaultsConfig{Memory: 999999}},
+			wantCPUs:   4,
+			wantMemory: MaxMemory,
+		},
+		{
+			name:       "MaxUint32 values are clamped",
+			global:     &Config{},
+			local:      &Config{Defaults: DefaultsConfig{CPUs: math.MaxUint32, Memory: math.MaxUint32}},
+			wantCPUs:   MaxCPUs,
+			wantMemory: MaxMemory,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := MergeConfigs(tt.global, tt.local)
+			assert.Equal(t, tt.wantCPUs, got.Defaults.CPUs, "CPUs")
+			assert.Equal(t, tt.wantMemory, got.Defaults.Memory, "Memory")
+		})
+	}
+}
+
+func TestMerge_ResourceBounds(t *testing.T) {
+	t.Parallel()
+
+	baseAgent := agent.Agent{
+		Name:                 "test",
+		Image:                "img:latest",
+		Command:              []string{"cmd"},
+		DefaultCPUs:          2,
+		DefaultMemory:        2048,
+		DefaultEgressProfile: "standard",
+	}
+
+	tests := []struct {
+		name       string
+		agent      agent.Agent
+		override   AgentOverride
+		defaults   DefaultsConfig
+		wantCPUs   uint32
+		wantMemory uint32
+	}{
+		{
+			name:       "normal values pass through",
+			agent:      baseAgent,
+			override:   AgentOverride{CPUs: 4, Memory: 4096},
+			defaults:   DefaultsConfig{},
+			wantCPUs:   4,
+			wantMemory: 4096,
+		},
+		{
+			name:       "override CPUs exceed max — clamped",
+			agent:      baseAgent,
+			override:   AgentOverride{CPUs: 256},
+			defaults:   DefaultsConfig{},
+			wantCPUs:   MaxCPUs,
+			wantMemory: 2048,
+		},
+		{
+			name:       "override memory exceeds max — clamped",
+			agent:      baseAgent,
+			override:   AgentOverride{Memory: 999999},
+			defaults:   DefaultsConfig{},
+			wantCPUs:   2,
+			wantMemory: MaxMemory,
+		},
+		{
+			name:       "global defaults exceed max — clamped",
+			agent:      agent.Agent{Name: "a", Image: "i:l", Command: []string{"c"}, DefaultEgressProfile: "standard"},
+			override:   AgentOverride{},
+			defaults:   DefaultsConfig{CPUs: 500, Memory: 500000},
+			wantCPUs:   MaxCPUs,
+			wantMemory: MaxMemory,
+		},
+		{
+			name:       "agent defaults exceed max — clamped",
+			agent:      agent.Agent{Name: "a", Image: "i:l", Command: []string{"c"}, DefaultCPUs: 200, DefaultMemory: 200000, DefaultEgressProfile: "standard"},
+			override:   AgentOverride{},
+			defaults:   DefaultsConfig{},
+			wantCPUs:   MaxCPUs,
+			wantMemory: MaxMemory,
+		},
+		{
+			name:       "zero override uses agent defaults",
+			agent:      baseAgent,
+			override:   AgentOverride{},
+			defaults:   DefaultsConfig{},
+			wantCPUs:   2,
+			wantMemory: 2048,
+		},
+		{
+			name:       "at boundary — exactly max passes through",
+			agent:      baseAgent,
+			override:   AgentOverride{CPUs: MaxCPUs, Memory: MaxMemory},
+			defaults:   DefaultsConfig{},
+			wantCPUs:   MaxCPUs,
+			wantMemory: MaxMemory,
+		},
+		{
+			name:       "MaxUint32 values are clamped",
+			agent:      baseAgent,
+			override:   AgentOverride{CPUs: math.MaxUint32, Memory: math.MaxUint32},
+			defaults:   DefaultsConfig{},
+			wantCPUs:   MaxCPUs,
+			wantMemory: MaxMemory,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := Merge(tt.agent, tt.override, tt.defaults)
+			assert.Equal(t, tt.wantCPUs, got.DefaultCPUs, "CPUs")
+			assert.Equal(t, tt.wantMemory, got.DefaultMemory, "Memory")
+		})
+	}
 }
