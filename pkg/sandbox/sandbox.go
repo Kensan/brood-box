@@ -5,6 +5,7 @@ package sandbox
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"github.com/stacklok/apiary/pkg/domain/agent"
 	"github.com/stacklok/apiary/pkg/domain/config"
 	"github.com/stacklok/apiary/pkg/domain/egress"
+	"github.com/stacklok/apiary/pkg/domain/flavour"
 	domaingit "github.com/stacklok/apiary/pkg/domain/git"
 	"github.com/stacklok/apiary/pkg/domain/hostservice"
 	"github.com/stacklok/apiary/pkg/domain/progress"
@@ -75,6 +77,10 @@ type RunOpts struct {
 	// SSHAgentForward enables SSH agent forwarding to the VM.
 	SSHAgentForward bool
 
+	// Flavour overrides the auto-detected workspace flavour.
+	// Empty means auto-detect; "none" disables flavour resolution.
+	Flavour string
+
 	// Terminal provides I/O streams for the session. Required for Run().
 	Terminal session.Terminal
 }
@@ -113,6 +119,12 @@ type SandboxDeps struct {
 	Reviewer        snapshot.Reviewer
 	Flusher         snapshot.Flusher
 	Differ          snapshot.Differ
+
+	// FlavourDetector detects workspace toolchain flavour (nil = skip detection).
+	FlavourDetector flavour.Detector
+
+	// ImageResolver maps (agent image, flavour) to a flavoured image ref (nil = no resolution).
+	ImageResolver flavour.ImageResolver
 
 	// MCPProvider creates host services for MCP proxy (nil = disabled).
 	MCPProvider hostservice.Provider
@@ -167,6 +179,8 @@ type SandboxRunner struct {
 	reviewer               snapshot.Reviewer
 	flusher                snapshot.Flusher
 	differ                 snapshot.Differ
+	flavourDetector        flavour.Detector
+	imageResolver          flavour.ImageResolver
 	mcpProvider            hostservice.Provider
 	snapshotPostProcessors []workspace.SnapshotPostProcessor
 	gitIdentityProvider    domaingit.IdentityProvider
@@ -190,6 +204,8 @@ func NewSandboxRunner(deps SandboxDeps) *SandboxRunner {
 		reviewer:               deps.Reviewer,
 		flusher:                deps.Flusher,
 		differ:                 deps.Differ,
+		flavourDetector:        deps.FlavourDetector,
+		imageResolver:          deps.ImageResolver,
 		mcpProvider:            deps.MCPProvider,
 		snapshotPostProcessors: deps.SnapshotPostProcessors,
 		gitIdentityProvider:    deps.GitIdentityProvider,
@@ -232,6 +248,11 @@ func (s *SandboxRunner) Prepare(ctx context.Context, agentName string, opts RunO
 	}
 
 	ag = config.Merge(ag, override, cfg.Defaults)
+
+	// Detect workspace flavour and resolve image (between agent merge and VM config).
+	if opts.ImageOverride == "" {
+		ag.Image = s.resolveFlavour(ctx, ag.Image, opts.Flavour, opts.Workspace)
+	}
 
 	command, err := resolveCommand(ag.Command, opts.CommandOverride, opts.CommandArgs)
 	if err != nil {
@@ -412,7 +433,7 @@ func (s *SandboxRunner) Prepare(ctx context.Context, agentName string, opts RunO
 	s.observer.Start(progress.PhaseStartingVM, "Starting sandbox VM...")
 
 	vmCfg := domvm.VMConfig{
-		Name:            "sandbox-" + ag.Name,
+		Name:            VMName(ag.Name, workspacePath),
 		Image:           ag.Image,
 		CPUs:            ag.DefaultCPUs,
 		Memory:          ag.DefaultMemory,
@@ -615,6 +636,64 @@ func resolveCommand(base, override, args []string) ([]string, error) {
 		}
 	}
 	return command, nil
+}
+
+// resolveFlavour determines the workspace flavour and resolves the image.
+// Returns the original image unchanged when detection is disabled or unavailable.
+func (s *SandboxRunner) resolveFlavour(ctx context.Context, agentImage, flavourOverride, workspacePath string) string {
+	// "none" disables flavour resolution entirely.
+	if flavourOverride == flavour.None {
+		return agentImage
+	}
+
+	// Skip if no resolver is configured.
+	if s.imageResolver == nil {
+		return agentImage
+	}
+
+	var detected flavour.Name
+
+	if flavourOverride != "" && flavourOverride != flavour.Auto {
+		// Manual override — use directly if valid.
+		f := flavour.Name(flavourOverride)
+		if f.IsValid() {
+			detected = f
+		} else {
+			s.logger.Warn("unknown flavour override, using auto-detection", "flavour", flavourOverride)
+		}
+	}
+
+	// Auto-detect when no valid override was given.
+	if detected == "" && s.flavourDetector != nil && workspacePath != "" {
+		det, err := s.flavourDetector.Detect(ctx, workspacePath)
+		if err != nil {
+			s.logger.Warn("flavour detection failed, using default image", "error", err)
+			return agentImage
+		}
+		detected = det.Primary
+		if len(det.Secondary) > 0 {
+			s.logger.Debug("secondary flavours detected", "secondary", det.Secondary)
+		}
+	}
+
+	if detected == "" || detected == flavour.Generic {
+		return agentImage
+	}
+
+	resolved := s.imageResolver.Resolve(agentImage, detected)
+	s.logger.Info("resolved flavoured image", "flavour", detected, "image", resolved)
+	return resolved
+}
+
+// VMName returns a deterministic VM name derived from the agent name
+// and workspace path. The workspace hash prevents collisions when
+// running concurrent sessions on different repos.
+func VMName(agentName, workspacePath string) string {
+	if workspacePath == "" {
+		return "sandbox-" + agentName
+	}
+	h := sha256.Sum256([]byte(workspacePath))
+	return fmt.Sprintf("sandbox-%s-%x", agentName, h[:4])
 }
 
 // resolveMCPConfig returns the effective MCP configuration by merging

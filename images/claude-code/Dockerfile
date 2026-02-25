@@ -3,7 +3,9 @@
 
 # Claude Code guest image for apiary.
 # Installs the Claude Code native binary (Bun-based) on top of the base image.
-FROM ghcr.io/stacklok/apiary/base:latest
+# Use BASE_IMAGE to select a flavoured base (e.g., base-go, base-python).
+ARG BASE_IMAGE=ghcr.io/stacklok/apiary/base:latest
+FROM ${BASE_IMAGE}
 
 # Install Claude Code native binary.
 # The installer creates a symlink at /root/.local/bin/claude pointing to the

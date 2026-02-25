@@ -25,6 +25,7 @@ import (
 	infraconfig "github.com/stacklok/apiary/internal/infra/config"
 	"github.com/stacklok/apiary/internal/infra/diff"
 	"github.com/stacklok/apiary/internal/infra/exclude"
+	infraflavour "github.com/stacklok/apiary/internal/infra/flavour"
 	infragit "github.com/stacklok/apiary/internal/infra/git"
 	infralogging "github.com/stacklok/apiary/internal/infra/logging"
 	inframcp "github.com/stacklok/apiary/internal/infra/mcp"
@@ -39,6 +40,7 @@ import (
 	"github.com/stacklok/apiary/pkg/domain/agent"
 	domainconfig "github.com/stacklok/apiary/pkg/domain/config"
 	"github.com/stacklok/apiary/pkg/domain/egress"
+	domainflavour "github.com/stacklok/apiary/pkg/domain/flavour"
 	"github.com/stacklok/apiary/pkg/domain/progress"
 	"github.com/stacklok/apiary/pkg/domain/snapshot"
 	"github.com/stacklok/apiary/pkg/domain/workspace"
@@ -76,6 +78,7 @@ func rootCmd() *cobra.Command {
 		mcpConfig     string
 		noGitToken    bool
 		noGitSSHAgent bool
+		flavourFlag   string
 	)
 
 	cmd := &cobra.Command{
@@ -127,6 +130,7 @@ Example:
 				mcpConfig:     mcpConfig,
 				noGitToken:    noGitToken,
 				noGitSSHAgent: noGitSSHAgent,
+				flavour:       flavourFlag,
 				commandArgs:   commandArgs,
 			})
 		},
@@ -152,6 +156,7 @@ Example:
 	cmd.Flags().StringVar(&mcpConfig, "mcp-config", "", "Path to custom vmcp config YAML")
 	cmd.Flags().BoolVar(&noGitToken, "no-git-token", false, "Disable forwarding GITHUB_TOKEN/GH_TOKEN into the VM")
 	cmd.Flags().BoolVar(&noGitSSHAgent, "no-git-ssh-agent", false, "Disable SSH agent forwarding into the VM")
+	cmd.Flags().StringVar(&flavourFlag, "flavour", domainflavour.Auto, "Workspace toolchain flavour: auto, none, go, python, node, rust")
 
 	// Add list subcommand.
 	cmd.AddCommand(listCmd())
@@ -193,6 +198,7 @@ type runFlags struct {
 	mcpConfig     string
 	noGitToken    bool
 	noGitSSHAgent bool
+	flavour       string
 	commandArgs   []string
 }
 
@@ -206,8 +212,19 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 		return fmt.Errorf("invalid agent name: %w", err)
 	}
 
-	// Derive VM name early so logs land in the per-VM directory.
-	vmName := "sandbox-" + agentName
+	// Resolve workspace early so we can derive a deterministic VM name.
+	earlyWs := flags.workspace
+	if earlyWs == "" {
+		var wdErr error
+		earlyWs, wdErr = os.Getwd()
+		if wdErr != nil {
+			return fmt.Errorf("getting current directory: %w", wdErr)
+		}
+	}
+
+	// Derive VM name from agent + workspace hash so concurrent sessions
+	// on different repos get separate data directories.
+	vmName := sandbox.VMName(agentName, earlyWs)
 
 	// Set up logging: always write to file, debug mode enables DEBUG level.
 	logPath, logFile, logCloser, err := openLogFile(flags.logFile, vmName)
@@ -230,14 +247,8 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 	terminal := infraterminal.NewOSTerminal(os.Stdin, os.Stdout, os.Stderr)
 	observer := chooseObserver(terminal)
 
-	// Resolve workspace.
-	ws := flags.workspace
-	if ws == "" {
-		ws, err = os.Getwd()
-		if err != nil {
-			return fmt.Errorf("getting current directory: %w", err)
-		}
-	}
+	// Use the workspace resolved above for VM naming.
+	ws := earlyWs
 
 	// Clean up stale snapshot dirs from previous crashes.
 	if !flags.noReview {
@@ -360,16 +371,38 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 		logger.Info("using embedded propolis runtime", "version", infraruntime.Version)
 	}
 
+	// Resolve effective flavour: CLI flag > agent config > defaults config > "auto".
+	effectiveFlavour := flags.flavour
+	if effectiveFlavour == domainflavour.Auto && cfg != nil {
+		// Check agent-specific override first, then global default.
+		if ao, ok := cfg.Agents[agentName]; ok && ao.Flavour != "" {
+			effectiveFlavour = ao.Flavour
+		} else if cfg.Defaults.Flavour != "" {
+			effectiveFlavour = cfg.Defaults.Flavour
+		}
+	}
+	if effectiveFlavour == "" {
+		effectiveFlavour = domainflavour.Auto
+	}
+	if effectiveFlavour != domainflavour.Auto && effectiveFlavour != domainflavour.None {
+		if !domainflavour.Name(effectiveFlavour).IsValid() {
+			return fmt.Errorf("invalid --flavour %q: valid values are %v",
+				effectiveFlavour, domainflavour.ValidNames())
+		}
+	}
+
 	// Wire dependencies.
 	var reviewer *review.InteractiveReviewer
 	deps := sandbox.SandboxDeps{
-		Registry:      registry,
-		VMRunner:      infravm.NewPropolisRunner(logger, vmRunnerOpts...),
-		SessionRunner: infrassh.NewInteractiveSession(logger),
-		Config:        sandboxCfg,
-		EnvProvider:   agent.NewOSEnvProvider(os.Environ),
-		Logger:        logger,
-		Observer:      observer,
+		Registry:        registry,
+		VMRunner:        infravm.NewPropolisRunner(logger, vmRunnerOpts...),
+		SessionRunner:   infrassh.NewInteractiveSession(logger),
+		Config:          sandboxCfg,
+		EnvProvider:     agent.NewOSEnvProvider(os.Environ),
+		Logger:          logger,
+		Observer:        observer,
+		FlavourDetector: infraflavour.NewFileDetector(),
+		ImageResolver:   infraflavour.NewConventionResolver(),
 	}
 
 	// Wire MCP proxy (enabled by default, --no-mcp to disable).
@@ -457,6 +490,7 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 		AllowHosts:      parsedAllowHosts,
 		GitTokenEnabled: gitTokenEnabled,
 		SSHAgentForward: sshAgentEnabled,
+		Flavour:         effectiveFlavour,
 		CommandArgs:     flags.commandArgs,
 		Snapshot: sandbox.SnapshotOpts{
 			Enabled:         reviewEnabled,
@@ -637,6 +671,12 @@ func warnLocalConfigOverrides(w io.Writer, localCfg, globalCfg *domainconfig.Con
 		}
 	}
 
+	// Defaults.Flavour — changes the OCI image that gets pulled.
+	if localCfg.Defaults.Flavour != "" {
+		warnings = append(warnings, fmt.Sprintf("sets default flavour: %s (changes pulled image)",
+			sanitizeValue(localCfg.Defaults.Flavour)))
+	}
+
 	// Network.AllowHosts — extra egress destinations.
 	if len(localCfg.Network.AllowHosts) > 0 {
 		names := make([]string, len(localCfg.Network.AllowHosts))
@@ -692,6 +732,10 @@ func warnLocalConfigOverrides(w io.Writer, localCfg, globalCfg *domainconfig.Con
 			} else {
 				warnings = append(warnings, fmt.Sprintf("sets %s memory: %d MiB", safeName, override.Memory))
 			}
+		}
+		if override.Flavour != "" {
+			warnings = append(warnings, fmt.Sprintf("sets %s flavour: %s (changes pulled image)",
+				safeName, sanitizeValue(override.Flavour)))
 		}
 		if override.MCP != nil {
 			if override.MCP.Enabled != nil {

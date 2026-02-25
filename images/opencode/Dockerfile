@@ -3,7 +3,9 @@
 
 # OpenCode guest image for apiary.
 # Installs the OpenCode binary (anomalyco/opencode, Bun-based, musl variant).
-FROM ghcr.io/stacklok/apiary/base:latest
+# Use BASE_IMAGE to select a flavoured base (e.g., base-go, base-python).
+ARG BASE_IMAGE=ghcr.io/stacklok/apiary/base:latest
+FROM ${BASE_IMAGE}
 
 # Install OpenCode binary from GitHub Releases (glibc variant, matches Wolfi)
 ARG TARGETARCH

@@ -3,7 +3,9 @@
 
 # Codex guest image for apiary.
 # Installs the Codex static binary (musl-linked) on top of the base image.
-FROM ghcr.io/stacklok/apiary/base:latest
+# Use BASE_IMAGE to select a flavoured base (e.g., base-go, base-python).
+ARG BASE_IMAGE=ghcr.io/stacklok/apiary/base:latest
+FROM ${BASE_IMAGE}
 
 # Install Codex static binary from GitHub Releases
 ARG TARGETARCH
