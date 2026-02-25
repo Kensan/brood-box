@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/stacklok/apiary/internal/guest/seccomp"
 	"github.com/stacklok/propolis/guest/boot"
 	"github.com/stacklok/propolis/guest/reaper"
 )
@@ -34,6 +35,12 @@ func main() {
 	shutdown, err := boot.Run(logger, boot.WithSSHAgentForwarding(true))
 	if err != nil {
 		logger.Error("boot failed", "error", err)
+		halt()
+		return
+	}
+
+	if err := seccomp.Apply(); err != nil {
+		logger.Error("seccomp filter failed", "error", err)
 		halt()
 		return
 	}
