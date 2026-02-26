@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: Copyright 2025 Stacklok, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-# Codex guest image for apiary.
+# Codex guest image for Brood Box.
 # Installs the Codex static binary (musl-linked) on top of the base image.
 # Use BASE_IMAGE to select a flavoured base (e.g., base-go, base-python).
-ARG BASE_IMAGE=ghcr.io/stacklok/apiary/base:latest
+ARG BASE_IMAGE=ghcr.io/stacklok/brood-box/base:latest
 FROM ${BASE_IMAGE}
 
 # Install Codex static binary from GitHub Releases

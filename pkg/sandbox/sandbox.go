@@ -11,17 +11,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/stacklok/apiary/pkg/domain/agent"
-	"github.com/stacklok/apiary/pkg/domain/config"
-	"github.com/stacklok/apiary/pkg/domain/egress"
-	"github.com/stacklok/apiary/pkg/domain/flavour"
-	domaingit "github.com/stacklok/apiary/pkg/domain/git"
-	"github.com/stacklok/apiary/pkg/domain/hostservice"
-	"github.com/stacklok/apiary/pkg/domain/progress"
-	"github.com/stacklok/apiary/pkg/domain/session"
-	"github.com/stacklok/apiary/pkg/domain/snapshot"
-	domvm "github.com/stacklok/apiary/pkg/domain/vm"
-	"github.com/stacklok/apiary/pkg/domain/workspace"
+	"github.com/stacklok/brood-box/pkg/domain/agent"
+	"github.com/stacklok/brood-box/pkg/domain/config"
+	"github.com/stacklok/brood-box/pkg/domain/egress"
+	"github.com/stacklok/brood-box/pkg/domain/flavour"
+	domaingit "github.com/stacklok/brood-box/pkg/domain/git"
+	"github.com/stacklok/brood-box/pkg/domain/hostservice"
+	"github.com/stacklok/brood-box/pkg/domain/progress"
+	"github.com/stacklok/brood-box/pkg/domain/session"
+	"github.com/stacklok/brood-box/pkg/domain/snapshot"
+	domvm "github.com/stacklok/brood-box/pkg/domain/vm"
+	"github.com/stacklok/brood-box/pkg/domain/workspace"
 )
 
 // SnapshotOpts groups snapshot isolation options.

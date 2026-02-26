@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/stacklok/apiary/pkg/domain/progress"
+	"github.com/stacklok/brood-box/pkg/domain/progress"
 )
 
 func TestSimpleObserver_Start(t *testing.T) {

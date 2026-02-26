@@ -12,6 +12,6 @@ Linux, `libkrunfw.dylib` on macOS) that is loaded at runtime by the
 `propolis-runner` subprocess. It is not statically linked into any binary
 in this project.
 
-When distributed in binary form (embedded in the apiary binary), the
+When distributed in binary form (embedded in the bbox binary), the
 corresponding GPL-2.0 source code is available from the upstream repository
 at the URL above.

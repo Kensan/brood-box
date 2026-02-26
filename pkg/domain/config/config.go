@@ -1,19 +1,19 @@
 // SPDX-FileCopyrightText: Copyright 2025 Stacklok, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-// Package config defines configuration types for apiary.
+// Package config defines configuration types for Brood Box.
 // All types are pure data with no I/O dependencies.
 package config
 
 import (
 	"fmt"
 
-	"github.com/stacklok/apiary/pkg/domain/agent"
-	"github.com/stacklok/apiary/pkg/domain/egress"
+	"github.com/stacklok/brood-box/pkg/domain/agent"
+	"github.com/stacklok/brood-box/pkg/domain/egress"
 )
 
 // LocalConfigFile is the per-workspace config file name.
-const LocalConfigFile = ".apiary.yaml"
+const LocalConfigFile = ".broodbox.yaml"
 
 // Config is the top-level user configuration.
 type Config struct {

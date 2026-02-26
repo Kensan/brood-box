@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/stacklok/apiary/pkg/domain/agent"
+	"github.com/stacklok/brood-box/pkg/domain/agent"
 )
 
 func TestReviewConfig_Defaults(t *testing.T) {

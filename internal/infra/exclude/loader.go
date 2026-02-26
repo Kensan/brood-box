@@ -11,23 +11,23 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/stacklok/apiary/pkg/domain/snapshot"
+	"github.com/stacklok/brood-box/pkg/domain/snapshot"
 )
 
 // sandboxIgnoreFile is the name of the per-workspace exclude config file.
-const sandboxIgnoreFile = ".apiaryignore"
+const sandboxIgnoreFile = ".broodboxignore"
 
-// LoadExcludeConfig reads .apiaryignore from the workspace root (if present),
+// LoadExcludeConfig reads .broodboxignore from the workspace root (if present),
 // merges it with built-in defaults and CLI patterns, and returns the combined
 // ExcludeConfig.
 //
-// Negation lines in .apiaryignore that would re-include security patterns
+// Negation lines in .broodboxignore that would re-include security patterns
 // are stripped and a warning is logged.
 func LoadExcludeConfig(workspacePath string, cliPatterns []string, logger *slog.Logger) (snapshot.ExcludeConfig, error) {
 	securityPatterns := snapshot.DefaultSecurityPatterns()
 	perfPatterns := snapshot.DefaultPerformancePatterns()
 
-	// Read .apiaryignore (missing file = no error).
+	// Read .broodboxignore (missing file = no error).
 	ignoreFile := filepath.Join(workspacePath, sandboxIgnoreFile)
 	filePatterns, err := readIgnoreFile(ignoreFile, securityPatterns, logger)
 	if err != nil {
@@ -68,7 +68,7 @@ func NewDiffMatcher(cfg snapshot.ExcludeConfig, gitignorePatterns []string) snap
 	return NewMatcher(userAndPerf, cfg.SecurityPatterns)
 }
 
-// readIgnoreFile reads a .apiaryignore file and returns the cleaned patterns.
+// readIgnoreFile reads a .broodboxignore file and returns the cleaned patterns.
 // Negation patterns that would re-include security-sensitive files are stripped.
 func readIgnoreFile(path string, securityPatterns []string, logger *slog.Logger) ([]string, error) {
 	f, err := os.Open(path)
@@ -98,7 +98,7 @@ func readIgnoreFile(path string, securityPatterns []string, logger *slog.Logger)
 		if strings.HasPrefix(line, "!") {
 			negated := line[1:]
 			if securitySet[negated] {
-				logger.Warn("ignoring negation of security pattern in .apiaryignore",
+				logger.Warn("ignoring negation of security pattern in .broodboxignore",
 					"pattern", line,
 					"reason", "security patterns cannot be overridden",
 				)

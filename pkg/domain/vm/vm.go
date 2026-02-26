@@ -10,9 +10,9 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	"github.com/stacklok/apiary/pkg/domain/agent"
-	"github.com/stacklok/apiary/pkg/domain/egress"
-	"github.com/stacklok/apiary/pkg/domain/git"
+	"github.com/stacklok/brood-box/pkg/domain/agent"
+	"github.com/stacklok/brood-box/pkg/domain/egress"
+	"github.com/stacklok/brood-box/pkg/domain/git"
 )
 
 // VMConfig holds the parameters needed to start a sandbox VM.

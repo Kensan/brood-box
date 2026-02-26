@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	domflavour "github.com/stacklok/apiary/pkg/domain/flavour"
+	domflavour "github.com/stacklok/brood-box/pkg/domain/flavour"
 )
 
 func TestFileDetector_Detect(t *testing.T) {

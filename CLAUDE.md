@@ -1,21 +1,21 @@
-# apiary
+# brood-box
 
 CLI tool for running coding agents (Claude Code, Codex, OpenCode) inside hardware-isolated microVMs.
 Wraps the propolis framework with an opinionated CLI.
 
-Module: `github.com/stacklok/apiary`
+Module: `github.com/stacklok/brood-box`
 
 ## Commands — ALWAYS use `task` (Taskfile.yaml)
 
 **IMPORTANT**: ALWAYS use `task <target>` for building, testing, linting, formatting, and running. NEVER invoke `go build`, `go test`, `golangci-lint`, `go fmt`, `goimports`, or `podman build` directly — the Taskfile wraps these with the correct flags, ldflags, env vars, and dependency ordering. Running raw commands will produce incorrect builds or miss steps.
 
 ```bash
-task build                  # Build apiary (pure Go, no CGO)
-task build-init             # Cross-compile apiary-init for guest VM
-task build-dev              # Build self-contained apiary with embedded propolis runtime (Linux, requires gh CLI)
-task build-dev-darwin       # Build self-contained apiary with embedded propolis runtime (macOS, requires gh CLI)
-task build-dev-system       # Build apiary + propolis-runner from system libkrun (Linux, requires libkrun-devel)
-task build-dev-system-darwin # Build apiary + propolis-runner from system libkrun (macOS, requires Homebrew libkrun)
+task build                  # Build bbox (pure Go, no CGO)
+task build-init             # Cross-compile bbox-init for guest VM
+task build-dev              # Build self-contained bbox with embedded propolis runtime (Linux, requires gh CLI)
+task build-dev-darwin       # Build self-contained bbox with embedded propolis runtime (macOS, requires gh CLI)
+task build-dev-system       # Build bbox + propolis-runner from system libkrun (Linux, requires libkrun-devel)
+task build-dev-system-darwin # Build bbox + propolis-runner from system libkrun (macOS, requires Homebrew libkrun)
 task fetch-runtime          # Download pre-built propolis runtime from GitHub Release
 task fetch-firmware         # Download pre-built propolis firmware from GitHub Release
 task test                   # go test -v -race ./...
@@ -67,10 +67,10 @@ This project follows DDD layered architecture with dependency injection **strict
 
 **Guest VM** (`internal/guest/`, Linux only — runs inside the microVM):
 - `internal/guest/` — Boot, mount, network, env, sshd, reaper packages
-- `cmd/apiary-init/` — Guest PID 1 init binary (compiled Go)
+- `cmd/bbox-init/` — Guest PID 1 init binary (compiled Go)
 
 **CLI + Composition Root** (`cmd/`):
-- `cmd/apiary/main.go` — Composition root, wires dependencies, Cobra CLI
+- `cmd/bbox/main.go` — Composition root, wires dependencies, Cobra CLI
 - `internal/version/` — Version/commit info via ldflags
 
 ### DDD Rules (non-negotiable)
@@ -100,12 +100,12 @@ By default, the workspace is mounted as a COW snapshot. After the agent finishes
 
 - `--no-review` — Disable snapshot isolation, mount workspace directly
 - `--exclude "pattern"` — Additional gitignore-style exclude patterns (repeatable)
-- `.apiaryignore` — Per-workspace exclude file (gitignore syntax) in workspace root
-- `.apiary.yaml` — Per-workspace config file (merged into global config; `review.enabled` is **ignored** for security)
-- Security patterns (`.env*`, `*.pem`, `.ssh/`, `.apiary.yaml`, etc.) are **non-overridable** — cannot be negated
-- Performance patterns (`node_modules/`, `vendor/`, etc.) can be negated in `.apiaryignore`
+- `.broodboxignore` — Per-workspace exclude file (gitignore syntax) in workspace root
+- `.broodbox.yaml` — Per-workspace config file (merged into global config; `review.enabled` is **ignored** for security)
+- Security patterns (`.env*`, `*.pem`, `.ssh/`, `.broodbox.yaml`, etc.) are **non-overridable** — cannot be negated
+- Performance patterns (`node_modules/`, `vendor/`, etc.) can be negated in `.broodboxignore`
 
-Global config (`~/.config/apiary/config.yaml`):
+Global config (`~/.config/broodbox/config.yaml`):
 ```yaml
 review:
   enabled: true
@@ -119,7 +119,7 @@ Execution order: create snapshot → start VM → terminal → stop VM → diff 
 ## Things That Will Bite You
 
 - **propolis is a tagged dependency**: `go.mod` depends on `github.com/stacklok/propolis` as a versioned module. `build-dev` downloads pre-built propolis runtime artifacts and embeds them — no local checkout or system libkrun needed. Use `build-dev-system` to build propolis-runner from source (requires `libkrun-devel`).
-- **CGO boundary**: apiary itself is pure Go (`CGO_ENABLED=0`). The embedded propolis-runner was pre-built with CGO elsewhere — no CGO needed at apiary build time.
+- **CGO boundary**: Brood Box itself is pure Go (`CGO_ENABLED=0`). The embedded propolis-runner was pre-built with CGO elsewhere — no CGO needed at bbox build time.
 - **`gh` CLI dependency**: `task fetch-runtime` and `task fetch-firmware` require the GitHub CLI (`gh`) to download release artifacts.
 - **Domain purity**: `pkg/domain/` must never import from `internal/infra/` or `pkg/sandbox/`. This is the most important architectural invariant — break it and you break the entire DDD foundation.
 - **Always use `task`**: Never run `go build`, `go test ./...`, `golangci-lint`, `go fmt`, or `goimports` directly. The Taskfile sets critical env vars and flags. Raw commands will silently produce wrong results.

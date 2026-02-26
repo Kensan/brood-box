@@ -9,7 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
-	domflavour "github.com/stacklok/apiary/pkg/domain/flavour"
+	domflavour "github.com/stacklok/brood-box/pkg/domain/flavour"
 )
 
 // markerRule maps filesystem markers to a flavour.

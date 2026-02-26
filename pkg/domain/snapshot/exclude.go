@@ -10,10 +10,10 @@ type ExcludeConfig struct {
 	SecurityPatterns []string
 
 	// PerformancePatterns are built-in patterns that can be
-	// overridden via negation in .apiaryignore.
+	// overridden via negation in .broodboxignore.
 	PerformancePatterns []string
 
-	// FilePatterns are user patterns from .apiaryignore.
+	// FilePatterns are user patterns from .broodboxignore.
 	FilePatterns []string
 
 	// CLIPatterns are patterns provided via --exclude flags.
@@ -77,14 +77,14 @@ func DefaultSecurityPatterns() []string {
 		// Encryption keys
 		"age-key.txt",
 		"*.age",
-		// Apiary config (should not be modified by agents).
+		// Brood Box config (should not be modified by agents).
 		// Duplicated from config.LocalConfigFile to avoid cross-package dependency.
-		".apiary.yaml",
+		".broodbox.yaml",
 	}
 }
 
 // DefaultPerformancePatterns returns built-in performance patterns
-// that CAN be overridden via negation in .apiaryignore.
+// that CAN be overridden via negation in .broodboxignore.
 func DefaultPerformancePatterns() []string {
 	return []string{
 		"node_modules/",

@@ -9,9 +9,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/stacklok/apiary/internal/infra/diff"
-	infraws "github.com/stacklok/apiary/internal/infra/workspace"
-	"github.com/stacklok/apiary/pkg/domain/snapshot"
+	"github.com/stacklok/brood-box/internal/infra/diff"
+	infraws "github.com/stacklok/brood-box/internal/infra/workspace"
+	"github.com/stacklok/brood-box/pkg/domain/snapshot"
 )
 
 // Ensure FSFlusher implements snapshot.Flusher at compile time.

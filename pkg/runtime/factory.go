@@ -11,19 +11,19 @@ import (
 
 	"github.com/stacklok/propolis/extract"
 
-	infraagent "github.com/stacklok/apiary/internal/infra/agent"
-	infradiff "github.com/stacklok/apiary/internal/infra/diff"
-	infragit "github.com/stacklok/apiary/internal/infra/git"
-	infrareview "github.com/stacklok/apiary/internal/infra/review"
-	infrassh "github.com/stacklok/apiary/internal/infra/ssh"
-	infravm "github.com/stacklok/apiary/internal/infra/vm"
-	infraworkspace "github.com/stacklok/apiary/internal/infra/workspace"
-	domainagent "github.com/stacklok/apiary/pkg/domain/agent"
-	domaingit "github.com/stacklok/apiary/pkg/domain/git"
-	"github.com/stacklok/apiary/pkg/domain/hostservice"
-	"github.com/stacklok/apiary/pkg/domain/progress"
-	domainworkspace "github.com/stacklok/apiary/pkg/domain/workspace"
-	"github.com/stacklok/apiary/pkg/sandbox"
+	infraagent "github.com/stacklok/brood-box/internal/infra/agent"
+	infradiff "github.com/stacklok/brood-box/internal/infra/diff"
+	infragit "github.com/stacklok/brood-box/internal/infra/git"
+	infrareview "github.com/stacklok/brood-box/internal/infra/review"
+	infrassh "github.com/stacklok/brood-box/internal/infra/ssh"
+	infravm "github.com/stacklok/brood-box/internal/infra/vm"
+	infraworkspace "github.com/stacklok/brood-box/internal/infra/workspace"
+	domainagent "github.com/stacklok/brood-box/pkg/domain/agent"
+	domaingit "github.com/stacklok/brood-box/pkg/domain/git"
+	"github.com/stacklok/brood-box/pkg/domain/hostservice"
+	"github.com/stacklok/brood-box/pkg/domain/progress"
+	domainworkspace "github.com/stacklok/brood-box/pkg/domain/workspace"
+	"github.com/stacklok/brood-box/pkg/sandbox"
 )
 
 // DefaultSandboxDepsOpts configures dependency wiring for SandboxRunner.
@@ -63,7 +63,7 @@ type DefaultSandboxDepsOpts struct {
 	CacheDir string
 }
 
-// NewDefaultSandboxDeps wires apiary's standard infrastructure dependencies.
+// NewDefaultSandboxDeps wires Brood Box's standard infrastructure dependencies.
 // Consumers can override fields on the returned SandboxDeps as needed.
 func NewDefaultSandboxDeps(opts DefaultSandboxDepsOpts) sandbox.SandboxDeps {
 	logger := opts.Logger

@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	domaingit "github.com/stacklok/apiary/pkg/domain/git"
+	domaingit "github.com/stacklok/brood-box/pkg/domain/git"
 )
 
 func TestInjectGitConfig_FullIdentityAndToken(t *testing.T) {
@@ -35,10 +35,10 @@ func TestInjectGitConfig_FullIdentityAndToken(t *testing.T) {
 	assert.Contains(t, content, "name = Alice")
 	assert.Contains(t, content, "email = alice@example.com")
 	assert.Contains(t, content, "[credential]")
-	assert.Contains(t, content, "helper = /usr/local/bin/git-credential-apiary")
+	assert.Contains(t, content, "helper = /usr/local/bin/git-credential-bbox")
 
 	// Verify credential helper exists.
-	helperPath := filepath.Join(rootfs, "usr", "local", "bin", "git-credential-apiary")
+	helperPath := filepath.Join(rootfs, "usr", "local", "bin", "git-credential-bbox")
 	_, err = os.Stat(helperPath)
 	assert.NoError(t, err)
 
@@ -72,7 +72,7 @@ func TestInjectGitConfig_IdentityOnly(t *testing.T) {
 	assert.NotContains(t, content, "[credential]")
 
 	// Verify no credential helper.
-	helperPath := filepath.Join(rootfs, "usr", "local", "bin", "git-credential-apiary")
+	helperPath := filepath.Join(rootfs, "usr", "local", "bin", "git-credential-bbox")
 	_, err = os.Stat(helperPath)
 	assert.True(t, os.IsNotExist(err), "credential helper should not exist")
 }
@@ -94,10 +94,10 @@ func TestInjectGitConfig_TokenOnly(t *testing.T) {
 	content := string(data)
 	assert.NotContains(t, content, "[user]")
 	assert.Contains(t, content, "[credential]")
-	assert.Contains(t, content, "helper = /usr/local/bin/git-credential-apiary")
+	assert.Contains(t, content, "helper = /usr/local/bin/git-credential-bbox")
 
 	// Verify credential helper exists.
-	helperPath := filepath.Join(rootfs, "usr", "local", "bin", "git-credential-apiary")
+	helperPath := filepath.Join(rootfs, "usr", "local", "bin", "git-credential-bbox")
 	_, err = os.Stat(helperPath)
 	assert.NoError(t, err)
 }
@@ -118,7 +118,7 @@ func TestInjectGitConfig_NoOp(t *testing.T) {
 	assert.True(t, os.IsNotExist(err), ".gitconfig should not exist")
 
 	// No credential helper should be written.
-	_, err = os.Stat(filepath.Join(rootfs, "usr", "local", "bin", "git-credential-apiary"))
+	_, err = os.Stat(filepath.Join(rootfs, "usr", "local", "bin", "git-credential-bbox"))
 	assert.True(t, os.IsNotExist(err), "credential helper should not exist")
 
 	assert.Empty(t, getCalls(), "chown should not be called for no-op")
@@ -132,7 +132,7 @@ func TestCredentialHelper_Executable(t *testing.T) {
 	err := writeCredentialHelper(rootfs)
 	require.NoError(t, err)
 
-	helperPath := filepath.Join(rootfs, "usr", "local", "bin", "git-credential-apiary")
+	helperPath := filepath.Join(rootfs, "usr", "local", "bin", "git-credential-bbox")
 	info, err := os.Stat(helperPath)
 	require.NoError(t, err)
 	assert.Equal(t, os.FileMode(0o755), info.Mode().Perm(),
@@ -182,7 +182,7 @@ func TestCredentialHelper_Content(t *testing.T) {
 	err := writeCredentialHelper(rootfs)
 	require.NoError(t, err)
 
-	helperPath := filepath.Join(rootfs, "usr", "local", "bin", "git-credential-apiary")
+	helperPath := filepath.Join(rootfs, "usr", "local", "bin", "git-credential-bbox")
 	data, err := os.ReadFile(helperPath)
 	require.NoError(t, err)
 

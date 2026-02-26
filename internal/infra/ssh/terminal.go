@@ -15,8 +15,8 @@ import (
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 
-	domainagent "github.com/stacklok/apiary/pkg/domain/agent"
-	"github.com/stacklok/apiary/pkg/domain/session"
+	domainagent "github.com/stacklok/brood-box/pkg/domain/agent"
+	"github.com/stacklok/brood-box/pkg/domain/session"
 )
 
 // Ensure InteractiveSession implements session.TerminalSession at compile time.

@@ -15,7 +15,7 @@ import (
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/stacklok/apiary/pkg/domain/snapshot"
+	"github.com/stacklok/brood-box/pkg/domain/snapshot"
 )
 
 // Ensure InteractiveReviewer implements snapshot.Reviewer at compile time.

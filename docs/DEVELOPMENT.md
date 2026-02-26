@@ -17,8 +17,8 @@ For building propolis-runner from source (optional, `task build-dev-system`):
 ## Getting Started
 
 ```bash
-git clone https://github.com/stacklok/apiary.git
-cd apiary
+git clone https://github.com/stacklok/brood-box.git
+cd brood-box
 
 # Install dependencies
 task tidy
@@ -31,11 +31,11 @@ task verify
 
 | Command | Description |
 |---------|-------------|
-| `task build` | Build `bin/apiary` (pure Go, `CGO_ENABLED=0`) |
-| `task build-init` | Cross-compile `apiary-init` for guest VM (Linux only) |
-| `task build-dev` | Build self-contained apiary with embedded propolis runtime (requires `gh` CLI) |
+| `task build` | Build `bin/bbox` (pure Go, `CGO_ENABLED=0`) |
+| `task build-init` | Cross-compile `bbox-init` for guest VM (Linux only) |
+| `task build-dev` | Build self-contained bbox with embedded propolis runtime (requires `gh` CLI) |
 | `task build-dev-darwin` | Same as `build-dev` for macOS |
-| `task build-dev-system` | Build apiary + `bin/propolis-runner` from system libkrun (requires libkrun-devel) |
+| `task build-dev-system` | Build bbox + `bin/propolis-runner` from system libkrun (requires libkrun-devel) |
 | `task build-dev-system-darwin` | Same as `build-dev-system` for macOS (requires Homebrew libkrun) |
 | `task fetch-runtime` | Download pre-built propolis runtime from GitHub Release |
 | `task fetch-firmware` | Download pre-built propolis firmware from GitHub Release |
@@ -63,7 +63,7 @@ Edit `internal/infra/agent/registry.go` and add an entry to the
 ```go
 "my-agent": {
     Name:          "my-agent",
-    Image:         "ghcr.io/stacklok/apiary/my-agent:latest",
+    Image:         "ghcr.io/stacklok/brood-box/my-agent:latest",
     Command:       []string{"my-agent"},
     EnvForward:    []string{"MY_API_KEY", "MY_AGENT_*"},
     DefaultCPUs:   2,
@@ -71,7 +71,7 @@ Edit `internal/infra/agent/registry.go` and add an entry to the
 },
 ```
 
-Then update the CLI help text in `cmd/apiary/main.go` and the
+Then update the CLI help text in `cmd/bbox/main.go` and the
 documentation.
 
 ## Writing Tests

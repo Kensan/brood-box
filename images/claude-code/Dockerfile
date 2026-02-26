@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: Copyright 2025 Stacklok, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-# Claude Code guest image for apiary.
+# Claude Code guest image for Brood Box.
 # Installs the Claude Code native binary (Bun-based) on top of the base image.
 # Use BASE_IMAGE to select a flavoured base (e.g., base-go, base-python).
-ARG BASE_IMAGE=ghcr.io/stacklok/apiary/base:latest
+ARG BASE_IMAGE=ghcr.io/stacklok/brood-box/base:latest
 FROM ${BASE_IMAGE}
 
 # Install Claude Code native binary.

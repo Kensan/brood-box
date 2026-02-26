@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"sort"
 
-	domainagent "github.com/stacklok/apiary/pkg/domain/agent"
-	"github.com/stacklok/apiary/pkg/domain/egress"
+	domainagent "github.com/stacklok/brood-box/pkg/domain/agent"
+	"github.com/stacklok/brood-box/pkg/domain/egress"
 )
 
 // Common dev infrastructure hosts shared across agents at the standard profile.
@@ -60,7 +60,7 @@ func builtinAgents() map[string]domainagent.Agent {
 	return map[string]domainagent.Agent{
 		"claude-code": {
 			Name:                 "claude-code",
-			Image:                "ghcr.io/stacklok/apiary/claude-code:latest",
+			Image:                "ghcr.io/stacklok/brood-box/claude-code:latest",
 			Command:              []string{"claude"},
 			EnvForward:           []string{"ANTHROPIC_API_KEY", "CLAUDE_*"},
 			DefaultCPUs:          2,
@@ -74,7 +74,7 @@ func builtinAgents() map[string]domainagent.Agent {
 		},
 		"codex": {
 			Name:                 "codex",
-			Image:                "ghcr.io/stacklok/apiary/codex:latest",
+			Image:                "ghcr.io/stacklok/brood-box/codex:latest",
 			Command:              []string{"codex"},
 			EnvForward:           []string{"OPENAI_API_KEY", "CODEX_*"},
 			DefaultCPUs:          2,
@@ -88,7 +88,7 @@ func builtinAgents() map[string]domainagent.Agent {
 		},
 		"opencode": {
 			Name:                 "opencode",
-			Image:                "ghcr.io/stacklok/apiary/opencode:latest",
+			Image:                "ghcr.io/stacklok/brood-box/opencode:latest",
 			Command:              []string{"opencode"},
 			EnvForward:           []string{"ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY", "OPENCODE_*"},
 			DefaultCPUs:          2,

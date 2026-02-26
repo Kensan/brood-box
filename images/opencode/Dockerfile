@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: Copyright 2025 Stacklok, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-# OpenCode guest image for apiary.
+# OpenCode guest image for Brood Box.
 # Installs the OpenCode binary (anomalyco/opencode, Bun-based, musl variant).
 # Use BASE_IMAGE to select a flavoured base (e.g., base-go, base-python).
-ARG BASE_IMAGE=ghcr.io/stacklok/apiary/base:latest
+ARG BASE_IMAGE=ghcr.io/stacklok/brood-box/base:latest
 FROM ${BASE_IMAGE}
 
 # Install OpenCode binary from GitHub Releases (glibc variant, matches Wolfi)

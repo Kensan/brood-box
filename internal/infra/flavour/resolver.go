@@ -6,12 +6,12 @@ package flavour
 import (
 	"strings"
 
-	domflavour "github.com/stacklok/apiary/pkg/domain/flavour"
+	domflavour "github.com/stacklok/brood-box/pkg/domain/flavour"
 )
 
 // ConventionResolver resolves flavoured image names using a naming convention.
-// Given "ghcr.io/stacklok/apiary/claude-code:latest" and flavour "go",
-// it produces "ghcr.io/stacklok/apiary/claude-code-go:latest".
+// Given "ghcr.io/stacklok/brood-box/claude-code:latest" and flavour "go",
+// it produces "ghcr.io/stacklok/brood-box/claude-code-go:latest".
 type ConventionResolver struct{}
 
 // NewConventionResolver creates a new convention-based image resolver.
@@ -27,7 +27,7 @@ func (r *ConventionResolver) Resolve(agentImage string, flavour domflavour.Name)
 	}
 
 	// Split on the last colon to separate name from tag.
-	// "ghcr.io/stacklok/apiary/claude-code:latest" → name="ghcr.io/stacklok/apiary/claude-code", tag="latest"
+	// "ghcr.io/stacklok/brood-box/claude-code:latest" → name="ghcr.io/stacklok/brood-box/claude-code", tag="latest"
 	name, tag := splitImageRef(agentImage)
 
 	// Insert flavour suffix: "claude-code" → "claude-code-go"

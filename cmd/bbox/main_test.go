@@ -9,17 +9,17 @@ import (
 	"strings"
 	"testing"
 
-	domainconfig "github.com/stacklok/apiary/pkg/domain/config"
+	domainconfig "github.com/stacklok/brood-box/pkg/domain/config"
 )
 
 // boolPtr is a test helper that returns a pointer to a bool.
 func boolPtr(b bool) *bool { return &b }
 
 // warnHeader is the banner printed before the warning list.
-const warnHeader = "Security: .apiary.yaml in this workspace modifies sandbox settings:\n"
+const warnHeader = "Security: .broodbox.yaml in this workspace modifies sandbox settings:\n"
 
 // warnFooter is the guidance printed after the warning list.
-const warnFooter = "Review .apiary.yaml before proceeding if this is unexpected.\n"
+const warnFooter = "Review .broodbox.yaml before proceeding if this is unexpected.\n"
 
 // wrapWarnings builds the expected full output block: blank line, header, bullets, footer, blank line.
 func wrapWarnings(bullets ...string) string {

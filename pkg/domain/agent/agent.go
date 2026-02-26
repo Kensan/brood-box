@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"regexp"
 
-	"github.com/stacklok/apiary/pkg/domain/egress"
+	"github.com/stacklok/brood-box/pkg/domain/egress"
 )
 
 // MaxNameLength is the maximum allowed length for an agent name.

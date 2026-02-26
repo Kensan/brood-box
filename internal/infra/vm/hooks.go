@@ -10,16 +10,16 @@ import (
 
 	"github.com/stacklok/propolis/image"
 
-	"github.com/stacklok/apiary/internal/infra/vm/initbin"
-	domainagent "github.com/stacklok/apiary/pkg/domain/agent"
+	"github.com/stacklok/brood-box/internal/infra/vm/initbin"
+	domainagent "github.com/stacklok/brood-box/pkg/domain/agent"
 )
 
-// InjectInitBinary returns a RootFS hook that writes the embedded apiary-init
-// binary to /apiary-init in the guest rootfs. This replaces the former shell
+// InjectInitBinary returns a RootFS hook that writes the embedded bbox-init
+// binary to /bbox-init in the guest rootfs. This replaces the former shell
 // init script and its dependencies (dropbear, iproute2, mount).
 func InjectInitBinary() func(string, *image.OCIConfig) error {
 	return func(rootfsPath string, _ *image.OCIConfig) error {
-		initPath := filepath.Join(rootfsPath, "apiary-init")
+		initPath := filepath.Join(rootfsPath, "bbox-init")
 		if err := os.WriteFile(initPath, initbin.Binary, 0o755); err != nil {
 			return fmt.Errorf("writing init binary: %w", err)
 		}

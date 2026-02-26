@@ -12,7 +12,7 @@ import (
 
 	"github.com/stacklok/propolis/image"
 
-	domaingit "github.com/stacklok/apiary/pkg/domain/git"
+	domaingit "github.com/stacklok/brood-box/pkg/domain/git"
 )
 
 // InjectGitConfig returns a RootFS hook that writes git configuration
@@ -36,7 +36,7 @@ func InjectGitConfig(identity domaingit.Identity, hasGitToken bool, chown ChownF
 	}
 }
 
-// writeCredentialHelper writes the git-credential-apiary shell script
+// writeCredentialHelper writes the git-credential-bbox shell script
 // to /usr/local/bin/ inside the guest rootfs.
 func writeCredentialHelper(rootfsPath string) error {
 	binDir := filepath.Join(rootfsPath, "usr", "local", "bin")
@@ -45,7 +45,7 @@ func writeCredentialHelper(rootfsPath string) error {
 	}
 
 	script := `#!/bin/sh
-# Git credential helper for apiary - reads GITHUB_TOKEN/GH_TOKEN at runtime.
+# Git credential helper for Brood Box - reads GITHUB_TOKEN/GH_TOKEN at runtime.
 # Scoped to github.com hosts only.
 
 case "$1" in
@@ -70,7 +70,7 @@ case "$1" in
         ;;
 esac
 `
-	helperPath := filepath.Join(binDir, "git-credential-apiary")
+	helperPath := filepath.Join(binDir, "git-credential-bbox")
 	if err := os.WriteFile(helperPath, []byte(script), 0o755); err != nil {
 		return fmt.Errorf("writing credential helper: %w", err)
 	}
@@ -99,7 +99,7 @@ func writeGitConfig(rootfsPath string, identity domaingit.Identity, hasGitToken 
 
 	if hasGitToken {
 		b.WriteString("[credential]\n")
-		b.WriteString("\thelper = /usr/local/bin/git-credential-apiary\n")
+		b.WriteString("\thelper = /usr/local/bin/git-credential-bbox\n")
 	}
 
 	if b.Len() == 0 {

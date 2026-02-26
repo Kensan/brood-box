@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: Copyright 2025 Stacklok, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-# Base image for apiary guest VMs.
-# Networking, mounts, and SSH are handled by the embedded apiary-init binary.
+# Base image for Brood Box guest VMs.
+# Networking, mounts, and SSH are handled by the embedded bbox-init binary.
 # This image only needs: bash, git, and common CLI tools for agents.
 FROM cgr.dev/chainguard/wolfi-base:latest
 

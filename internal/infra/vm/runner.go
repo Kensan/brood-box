@@ -22,8 +22,8 @@ import (
 	"github.com/stacklok/propolis/net/topology"
 	propolisssh "github.com/stacklok/propolis/ssh"
 
-	"github.com/stacklok/apiary/pkg/domain/agent"
-	domvm "github.com/stacklok/apiary/pkg/domain/vm"
+	"github.com/stacklok/brood-box/pkg/domain/agent"
+	domvm "github.com/stacklok/brood-box/pkg/domain/vm"
 )
 
 // Ensure PropolisRunner implements domvm.VMRunner at compile time.
@@ -151,7 +151,7 @@ func (r *PropolisRunner) Start(ctx context.Context, cfg domvm.VMConfig) (domvm.V
 			hooks.InjectEnvFile("/etc/sandbox-env", cfg.EnvVars),
 			InjectGitConfig(cfg.GitIdentity, cfg.HasGitToken, os.Chown),
 		),
-		propolis.WithInitOverride("/apiary-init"),
+		propolis.WithInitOverride("/bbox-init"),
 		propolis.WithPostBoot(func(ctx context.Context, _ *propolis.VM) error {
 			r.logger.Info("waiting for SSH", "port", sshPort)
 			client := propolisssh.NewClient("127.0.0.1", sshPort, "sandbox", privKeyPath,
@@ -290,15 +290,15 @@ func (v *propolisVM) SSHHostKey() ssh.PublicKey {
 	return v.sshHostKey
 }
 
-// vmDataDir returns a per-VM data directory under ~/.config/apiary/vms/<name>/data.
+// vmDataDir returns a per-VM data directory under ~/.config/broodbox/vms/<name>/data.
 // This isolates state files and locks so multiple VMs can run in parallel.
-// The parent directory is used by apiary for logs and should not be cleaned.
+// The parent directory is used by bbox for logs and should not be cleaned.
 func vmDataDir(name string) (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("determining home directory: %w", err)
 	}
-	return filepath.Join(home, ".config", "apiary", "vms", name, "data"), nil
+	return filepath.Join(home, ".config", "broodbox", "vms", name, "data"), nil
 }
 
 // pickFreePort asks the kernel for a free TCP port by binding to :0, reading

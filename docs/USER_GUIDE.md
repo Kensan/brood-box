@@ -1,6 +1,6 @@
 # User Guide
 
-apiary runs coding agents (Claude Code, Codex, OpenCode) inside
+Brood Box runs coding agents (Claude Code, Codex, OpenCode) inside
 hardware-isolated microVMs powered by [libkrun](https://github.com/containers/libkrun).
 Your workspace is mounted into the VM, API keys are forwarded automatically,
 and you get a live interactive terminal session.
@@ -9,13 +9,13 @@ and you get a live interactive terminal session.
 
 ```bash
 # Run Claude Code in the current directory
-apiary claude-code
+bbox claude-code
 
 # Run Codex with more resources
-apiary codex --cpus 4 --memory 4096
+bbox codex --cpus 4 --memory 4096
 
 # Run OpenCode on a specific project
-apiary opencode --workspace /path/to/project
+bbox opencode --workspace /path/to/project
 ```
 
 ## Prerequisites
@@ -36,22 +36,22 @@ ls -la /dev/kvm
 
 | Agent | Image | Command | Forwarded Env Vars |
 |-------|-------|---------|--------------------|
-| `claude-code` | `ghcr.io/stacklok/apiary/claude-code:latest` | `claude` | `ANTHROPIC_API_KEY`, `CLAUDE_*` |
-| `codex` | `ghcr.io/stacklok/apiary/codex:latest` | `codex` | `OPENAI_API_KEY`, `CODEX_*` |
-| `opencode` | `ghcr.io/stacklok/apiary/opencode:latest` | `opencode` | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `OPENCODE_*` |
+| `claude-code` | `ghcr.io/stacklok/brood-box/claude-code:latest` | `claude` | `ANTHROPIC_API_KEY`, `CLAUDE_*` |
+| `codex` | `ghcr.io/stacklok/brood-box/codex:latest` | `codex` | `OPENAI_API_KEY`, `CODEX_*` |
+| `opencode` | `ghcr.io/stacklok/brood-box/opencode:latest` | `opencode` | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `OPENCODE_*` |
 
 All agents default to the `standard` egress profile.
 
 List agents:
 
 ```bash
-apiary list
+bbox list
 ```
 
 ## CLI Reference
 
 ```
-apiary <agent-name> [flags] [-- <agent-args...>]
+bbox <agent-name> [flags] [-- <agent-args...>]
 ```
 
 ### Flags
@@ -62,7 +62,7 @@ apiary <agent-name> [flags] [-- <agent-args...>]
 | `--memory` | Agent default (2048) | RAM in MiB |
 | `--workspace` | Current directory | Host directory mounted as `/workspace` |
 | `--ssh-port` | Auto-pick | Host port forwarded to guest SSH (port 22) |
-| `--config` | `~/.config/apiary/config.yaml` | Config file path |
+| `--config` | `~/.config/broodbox/config.yaml` | Config file path |
 | `--image` | Agent default | Override the OCI image reference |
 | `--no-review` | `false` | Disable snapshot isolation, mount workspace directly |
 | `--exclude` | (none) | Additional gitignore-style exclude patterns (repeatable) |
@@ -74,13 +74,13 @@ apiary <agent-name> [flags] [-- <agent-args...>]
 | `--mcp-config` | (none) | Path to custom vmcp config YAML |
 | `--no-git-token` | `false` | Disable forwarding GITHUB_TOKEN/GH_TOKEN into the VM |
 | `--no-git-ssh-agent` | `false` | Disable SSH agent forwarding into the VM |
-| `--log-file` | `~/.config/apiary/vms/<vm>/apiary.log` | Override log file path |
+| `--log-file` | `~/.config/broodbox/vms/<vm>/broodbox.log` | Override log file path |
 | `--debug` | `false` | Enable debug-level logging to file |
 
-Pass agent-specific arguments after `--` so they are not parsed by apiary:
+Pass agent-specific arguments after `--` so they are not parsed by Brood Box:
 
 ```bash
-apiary claude-code -- --help
+bbox claude-code -- --help
 ```
 
 ### Subcommands
@@ -93,8 +93,8 @@ apiary claude-code -- --help
 
 1. **Resolve agent** -- Looks up the agent name in the built-in registry
    (and any custom agents from your config file).
-2. **Load config** -- Reads `~/.config/apiary/config.yaml` and
-   per-workspace `.apiary.yaml`, merges overrides with built-in
+2. **Load config** -- Reads `~/.config/broodbox/config.yaml` and
+   per-workspace `.broodbox.yaml`, merges overrides with built-in
    agent defaults and CLI flags.
 3. **Collect environment** -- Matches your host environment variables against
    the agent's forwarding patterns (e.g., `ANTHROPIC_API_KEY`, `CLAUDE_*`)
@@ -120,7 +120,7 @@ apiary claude-code -- --help
 
 ## Configuration
 
-Create `~/.config/apiary/config.yaml` to customize defaults,
+Create `~/.config/broodbox/config.yaml` to customize defaults,
 override built-in agents, or define custom agents.
 
 ```yaml
@@ -196,7 +196,7 @@ before the agent starts. Values are shell-escaped for safety.
 
 ## Workspace Snapshot Isolation
 
-By default, apiary creates a copy-on-write (COW) snapshot of your
+By default, Brood Box creates a copy-on-write (COW) snapshot of your
 workspace before the agent starts. The agent works on the snapshot, and
 after it finishes you review changes per-file before they touch your real
 workspace.
@@ -223,7 +223,7 @@ Pass `--no-review` to mount the workspace directly into the VM with no
 snapshot isolation:
 
 ```bash
-apiary claude-code --no-review
+bbox claude-code --no-review
 ```
 
 ### Exclude Patterns
@@ -232,21 +232,21 @@ Certain files are automatically excluded from the snapshot:
 
 **Security patterns** (non-overridable — always excluded):
 - `.env*`, `*.pem`, `*.key`, `.ssh/`, `.aws/`, `.gcp/`, `credentials.json`
-- `.apiary.yaml`, `.kube/config`, `.gnupg/`, and more
+- `.broodbox.yaml`, `.kube/config`, `.gnupg/`, and more
 
-**Performance patterns** (overridable — can be negated in `.apiaryignore`):
+**Performance patterns** (overridable -- can be negated in `.broodboxignore`):
 - `node_modules/`, `vendor/`, `.git/objects/`, `__pycache__/`, `target/`,
   `build/`, `dist/`, `.venv/`, `.tox/`
 
 Add extra patterns via the CLI:
 
 ```bash
-apiary claude-code --exclude "*.log" --exclude "tmp/"
+bbox claude-code --exclude "*.log" --exclude "tmp/"
 ```
 
-### `.apiaryignore`
+### `.broodboxignore`
 
-Create a `.apiaryignore` file in your workspace root (gitignore syntax)
+Create a `.broodboxignore` file in your workspace root (gitignore syntax)
 to exclude additional paths:
 
 ```gitignore
@@ -262,7 +262,7 @@ Security patterns cannot be negated — attempts are logged as warnings.
 
 ### Per-Workspace Config
 
-Create `.apiary.yaml` in your workspace root to set per-project
+Create `.broodbox.yaml` in your workspace root to set per-project
 defaults:
 
 ```yaml
@@ -289,10 +289,10 @@ Each agent comes with DNS-aware egress policies. Three profiles are available:
 
 ```bash
 # Lock egress to the LLM provider only
-apiary claude-code --egress-profile locked
+bbox claude-code --egress-profile locked
 
 # Add specific hosts beyond the profile (DNS hostnames only, no IP addresses)
-apiary claude-code --allow-host "my-registry.example.com:443"
+bbox claude-code --allow-host "my-registry.example.com:443"
 ```
 
 The egress firewall is DNS-based: it intercepts DNS queries to enforce allow-lists.
@@ -312,19 +312,19 @@ network:
 
 ## MCP Tool Proxy
 
-When [ToolHive](https://github.com/stacklok/toolhive) is running, apiary
+When [ToolHive](https://github.com/stacklok/toolhive) is running, Brood Box
 automatically discovers MCP servers and proxies them into the VM so the
 agent can use external tools.
 
 ```bash
 # Disable MCP proxy
-apiary claude-code --no-mcp
+bbox claude-code --no-mcp
 
 # Use a specific ToolHive group
-apiary claude-code --mcp-group "coding-tools"
+bbox claude-code --mcp-group "coding-tools"
 
 # Override the proxy port
-apiary claude-code --mcp-port 5000
+bbox claude-code --mcp-port 5000
 ```
 
 MCP config is injected into the guest in the agent-specific format
@@ -332,16 +332,16 @@ MCP config is injected into the guest in the agent-specific format
 
 ## Git Integration
 
-By default, apiary forwards your git identity (user.name and user.email),
+By default, Brood Box forwards your git identity (user.name and user.email),
 GITHUB_TOKEN/GH_TOKEN, and SSH agent into the VM so git operations work
 seamlessly.
 
 ```bash
 # Disable token forwarding
-apiary claude-code --no-git-token
+bbox claude-code --no-git-token
 
 # Disable SSH agent forwarding
-apiary claude-code --no-git-ssh-agent
+bbox claude-code --no-git-ssh-agent
 ```
 
 When snapshot isolation is enabled, the `.git/config` is sanitized to
@@ -356,7 +356,7 @@ remove sensitive values (credentials, tokens) before copying.
 
 ## Building Guest Images
 
-apiary runs agents inside OCI images that boot as microVMs. Pre-built
+Brood Box runs agents inside OCI images that boot as microVMs. Pre-built
 images are available from GHCR, but you can also build them locally.
 
 ### Prerequisites
@@ -373,10 +373,10 @@ This builds the base image first, then all three agent images in parallel:
 
 | Image | Contents |
 |-------|----------|
-| `ghcr.io/stacklok/apiary/base:latest` | Wolfi + sshd, bash, git, coreutils |
-| `ghcr.io/stacklok/apiary/claude-code:latest` | Base + Claude Code binary |
-| `ghcr.io/stacklok/apiary/codex:latest` | Base + Codex binary |
-| `ghcr.io/stacklok/apiary/opencode:latest` | Base + OpenCode binary |
+| `ghcr.io/stacklok/brood-box/base:latest` | Wolfi + sshd, bash, git, coreutils |
+| `ghcr.io/stacklok/brood-box/claude-code:latest` | Base + Claude Code binary |
+| `ghcr.io/stacklok/brood-box/codex:latest` | Base + Codex binary |
+| `ghcr.io/stacklok/brood-box/opencode:latest` | Base + OpenCode binary |
 
 ### Build Individual Images
 
@@ -402,7 +402,7 @@ task image-push
 ### "agent not found: <name>"
 
 The agent name doesn't match any built-in or custom agent. Run
-`apiary list` to see available agents. Custom agents need an
+`bbox list` to see available agents. Custom agents need an
 `image` field in the config file.
 
 ### VM fails to start
@@ -414,7 +414,7 @@ Check that:
 
 ### SSH connection refused
 
-The guest may still be booting. apiary waits for SSH automatically,
+The guest may still be booting. Brood Box waits for SSH automatically,
 but if the image's init system is slow, the timeout may be exceeded.
 Check the VM console log for errors.
 

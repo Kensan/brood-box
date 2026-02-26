@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/stacklok/apiary/pkg/domain/session"
+	"github.com/stacklok/brood-box/pkg/domain/session"
 )
 
 func TestOSTerminal_Streams(t *testing.T) {

@@ -1,6 +1,6 @@
 # macOS Support
 
-Apiary supports macOS on Apple Silicon (M1+) via Hypervisor.framework, using the
+Brood Box supports macOS on Apple Silicon (M1+) via Hypervisor.framework, using the
 same propolis framework that powers the Linux backend.
 
 ## Requirements
@@ -22,9 +22,9 @@ This installs the shared libraries that propolis-runner links against via CGO.
 
 ## Building
 
-### Pure Go binary (apiary only)
+### Pure Go binary (bbox only)
 
-The `apiary` binary itself is pure Go (`CGO_ENABLED=0`) and compiles on any platform:
+The `bbox` binary itself is pure Go (`CGO_ENABLED=0`) and compiles on any platform:
 
 ```bash
 task build
@@ -32,14 +32,14 @@ task build
 
 This works identically on Linux and macOS.
 
-### Full development build (apiary + propolis-runner)
+### Full development build (bbox + propolis-runner)
 
 ```bash
 task build-dev-darwin
 ```
 
 This:
-1. Builds the `apiary` binary (pure Go)
+1. Builds the `bbox` binary (pure Go)
 2. Builds `propolis-runner` from the pinned propolis module version (CGO, links libkrun)
 3. Code-signs `propolis-runner` with Hypervisor.framework entitlements
 
@@ -48,10 +48,10 @@ The resulting binaries are in `bin/`.
 ## Running
 
 ```bash
-bin/apiary claude-code --workspace /path/to/project
+bin/bbox claude-code --workspace /path/to/project
 ```
 
-Propolis auto-discovers `propolis-runner` next to the `apiary` binary (both in `bin/`).
+Propolis auto-discovers `propolis-runner` next to the `bbox` binary (both in `bin/`).
 
 ## Platform Differences
 

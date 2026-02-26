@@ -1,13 +1,13 @@
 # Architecture
 
-apiary follows Domain-Driven Design (DDD) with strict layering
+Brood Box follows Domain-Driven Design (DDD) with strict layering
 and dependency injection throughout.
 
 ## Layers
 
 ```
-cmd/apiary/main.go     (composition root — wires everything)
-cmd/apiary-init/main.go      (guest PID 1 init binary)
+cmd/bbox/main.go       (composition root — wires everything)
+cmd/bbox-init/main.go        (guest PID 1 init binary)
         │
         ▼
    pkg/sandbox/               (application service — orchestrates domain)
@@ -114,14 +114,14 @@ Concrete implementations of domain interfaces and system integration.
   SSH sessions with raw terminal mode, SIGWINCH handling, and context
   cancellation support.
 - **`config/loader.go`** -- `Loader` reads YAML config from
-  `$XDG_CONFIG_HOME/apiary/config.yaml` with graceful fallback
+  `$XDG_CONFIG_HOME/broodbox/config.yaml` with graceful fallback
   when the file doesn't exist.
 - **`agent/registry.go`** -- In-memory `Registry` pre-loaded with
   built-in agents (claude-code, codex, opencode). Supports adding
   custom agents from config.
 - **`exclude/`** -- Two-tier gitignore-compatible pattern matching.
   Security patterns are non-overridable; performance patterns can be
-  negated in `.apiaryignore`.
+  negated in `.broodboxignore`.
 - **`workspace/`** -- COW workspace cloning using FICLONE (Linux),
   clonefile (macOS), or copy fallback. Includes stale snapshot cleanup
   and symlink validation for path traversal protection.
@@ -145,7 +145,7 @@ Concrete implementations of domain interfaces and system integration.
 - **`logging/`** -- `FileHandler` is a custom slog handler that writes
   to a log file with timestamp formatting.
 
-### Composition Root (`cmd/apiary/main.go`)
+### Composition Root (`cmd/bbox/main.go`)
 
 Wires all concrete implementations together:
 
@@ -157,7 +157,7 @@ Wires all concrete implementations together:
 
 ### Runtime Factory (`pkg/runtime/`)
 
-Public helper package that wires apiary's default infrastructure for SDK
+Public helper package that wires Brood Box's default infrastructure for SDK
 consumers (for example, orchestration systems). This keeps `internal/infra/`
 private while providing a supported path to construct `SandboxRunner` with
 the standard VM runner, session implementation, differ, flusher, and workspace
@@ -207,7 +207,7 @@ This makes the sandbox layer fully testable with mocks — see
 ## VM Lifecycle
 
 ```
-apiary claude-code
+bbox claude-code
         │
         ▼
    Create workspace snapshot (if review enabled)
@@ -220,7 +220,7 @@ apiary claude-code
         │
         ▼
    Run rootfs hooks:
-     1. InjectInitBinary → /apiary-init (compiled Go binary)
+     1. InjectInitBinary → /bbox-init (compiled Go binary)
      2. InjectMCPConfig  → agent-specific MCP config (if MCP enabled)
    Propolis options inject:
      - SSH keys          → /home/sandbox/.ssh/authorized_keys
@@ -228,7 +228,7 @@ apiary claude-code
      - Git config        → /home/sandbox/.gitconfig
         │
         ▼
-   Write .krun_config.json (init override → /apiary-init)
+   Write .krun_config.json (init override → /bbox-init)
         │
         ▼
    Start networking (in-process, gvisor-tap-vsock)
@@ -237,8 +237,8 @@ apiary claude-code
    Spawn propolis-runner (libkrun microVM)
         │
         ▼
-   Guest boots (/apiary-init as PID 1):
-     apiary-init → guest/boot.Run():
+   Guest boots (/bbox-init as PID 1):
+     bbox-init → guest/boot.Run():
        - Mount essential filesystems (/proc, /sys, /dev, /tmp, /run)
        - Configure loopback networking (netlink)
        - Mount virtiofs workspace → /workspace
@@ -267,7 +267,7 @@ apiary claude-code
 ## Guest Layer (`internal/guest/`)
 
 Code that runs inside the microVM (Linux only, compiled into
-`cmd/apiary-init/`):
+`cmd/bbox-init/`):
 
 - **`boot/`** -- Orchestrates guest startup: mount filesystems,
   configure networking, mount workspace, load env, start SSH server.
@@ -289,8 +289,8 @@ Inside the VM:
 | `/workspace` | Host workspace directory (virtio-fs mount) |
 | `/etc/sandbox-env` | `export KEY='value'` lines for forwarded vars |
 | `/home/sandbox/.ssh/authorized_keys` | Ephemeral public key for SSH access |
-| `/apiary-init` | Compiled Go init binary (PID 1) |
-| `/.krun_config.json` | libkrun config pointing to `/apiary-init` |
+| `/bbox-init` | Compiled Go init binary (PID 1) |
+| `/.krun_config.json` | libkrun config pointing to `/bbox-init` |
 
 ## Security Model
 
@@ -301,7 +301,7 @@ Inside the VM:
 - **Localhost-only SSH**: Port forwards bind to `127.0.0.1` only.
 - **Shell-escaped env injection**: All environment variable values are
   single-quote escaped to prevent injection.
-- **No persistent state**: apiary doesn't maintain any state
+- **No persistent state**: Brood Box doesn't maintain any state
   between runs. Each invocation is fully ephemeral.
 - **Snapshot hash verification**: File hashes are re-verified between
   diff and flush to prevent TOCTOU (time-of-check-time-of-use) attacks.
@@ -309,7 +309,7 @@ Inside the VM:
   copying. `ValidateInBounds` resolves symlinks in both base and target.
 - **Non-overridable security patterns**: Sensitive files (`.env*`,
   `*.pem`, `.ssh/`, credentials, etc.) are always excluded from snapshots
-  and cannot be negated in `.apiaryignore`.
+  and cannot be negated in `.broodboxignore`.
 - **Permission stripping**: Setuid, setgid, and sticky bits are stripped
   when flushing files back to the original workspace.
 - **VM stopped before review**: The VM is explicitly stopped before
@@ -318,7 +318,7 @@ Inside the VM:
 
 ## Relationship to Propolis
 
-apiary is a consumer of the [propolis](https://github.com/stacklok/propolis)
+Brood Box is a consumer of the [propolis](https://github.com/stacklok/propolis)
 library. It uses propolis via a local `replace` directive in `go.mod`:
 
 ```
@@ -335,7 +335,7 @@ replace github.com/stacklok/propolis => ../propolis
 | `WithPorts` | Forward SSH (host → guest:22) |
 | `WithVirtioFS` | Mount workspace directory |
 | `WithRootFSHook` | Inject SSH keys, init binary, env file |
-| `WithInitOverride` | Replace OCI CMD with `/apiary-init` |
+| `WithInitOverride` | Replace OCI CMD with `/bbox-init` |
 | `WithPostBoot` | Wait for SSH readiness |
 | `WithRunnerPath` | Locate propolis-runner binary |
 | `ssh.GenerateKeyPair` | Create ephemeral SSH keys |

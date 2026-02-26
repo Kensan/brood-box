@@ -19,13 +19,13 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ssh"
 
-	"github.com/stacklok/apiary/pkg/domain/agent"
-	"github.com/stacklok/apiary/pkg/domain/egress"
-	"github.com/stacklok/apiary/pkg/domain/flavour"
-	"github.com/stacklok/apiary/pkg/domain/session"
-	"github.com/stacklok/apiary/pkg/domain/snapshot"
-	domvm "github.com/stacklok/apiary/pkg/domain/vm"
-	"github.com/stacklok/apiary/pkg/domain/workspace"
+	"github.com/stacklok/brood-box/pkg/domain/agent"
+	"github.com/stacklok/brood-box/pkg/domain/egress"
+	"github.com/stacklok/brood-box/pkg/domain/flavour"
+	"github.com/stacklok/brood-box/pkg/domain/session"
+	"github.com/stacklok/brood-box/pkg/domain/snapshot"
+	domvm "github.com/stacklok/brood-box/pkg/domain/vm"
+	"github.com/stacklok/brood-box/pkg/domain/workspace"
 )
 
 // mockVMRunner records the config it was called with.
@@ -1157,7 +1157,7 @@ func TestSandboxRunner_Prepare_FlavourDetection(t *testing.T) {
 
 	testAgent := agent.Agent{
 		Name:          "test-agent",
-		Image:         "ghcr.io/stacklok/apiary/test-agent:latest",
+		Image:         "ghcr.io/stacklok/brood-box/test-agent:latest",
 		Command:       []string{"cmd"},
 		DefaultCPUs:   2,
 		DefaultMemory: 2048,
@@ -1176,29 +1176,29 @@ func TestSandboxRunner_Prepare_FlavourDetection(t *testing.T) {
 			name:        "auto-detect go project",
 			flavour:     "auto",
 			markerFiles: []string{"go.mod"},
-			wantImage:   "ghcr.io/stacklok/apiary/test-agent-go:latest",
+			wantImage:   "ghcr.io/stacklok/brood-box/test-agent-go:latest",
 		},
 		{
 			name:        "auto-detect python project",
 			flavour:     "auto",
 			markerFiles: []string{"pyproject.toml"},
-			wantImage:   "ghcr.io/stacklok/apiary/test-agent-python:latest",
+			wantImage:   "ghcr.io/stacklok/brood-box/test-agent-python:latest",
 		},
 		{
 			name:      "manual go override",
 			flavour:   "go",
-			wantImage: "ghcr.io/stacklok/apiary/test-agent-go:latest",
+			wantImage: "ghcr.io/stacklok/brood-box/test-agent-go:latest",
 		},
 		{
 			name:        "none disables detection",
 			flavour:     "none",
 			markerFiles: []string{"go.mod"},
-			wantImage:   "ghcr.io/stacklok/apiary/test-agent:latest",
+			wantImage:   "ghcr.io/stacklok/brood-box/test-agent:latest",
 		},
 		{
 			name:      "no markers returns generic",
 			flavour:   "auto",
-			wantImage: "ghcr.io/stacklok/apiary/test-agent:latest",
+			wantImage: "ghcr.io/stacklok/brood-box/test-agent:latest",
 		},
 		{
 			name:          "image override takes precedence",
@@ -1304,7 +1304,7 @@ func TestSandboxRunner_Prepare_FlavourDetection_InvalidOverride(t *testing.T) {
 
 	testAgent := agent.Agent{
 		Name:          "test-agent",
-		Image:         "ghcr.io/stacklok/apiary/test-agent:latest",
+		Image:         "ghcr.io/stacklok/brood-box/test-agent:latest",
 		Command:       []string{"cmd"},
 		DefaultCPUs:   2,
 		DefaultMemory: 2048,
@@ -1338,7 +1338,7 @@ func TestSandboxRunner_Prepare_FlavourDetection_InvalidOverride(t *testing.T) {
 	defer func() { _ = sb.Cleanup() }()
 
 	// Should auto-detect Go since "java" is invalid.
-	assert.Equal(t, "ghcr.io/stacklok/apiary/test-agent-go:latest", vmRunner.startCfg.Image)
+	assert.Equal(t, "ghcr.io/stacklok/brood-box/test-agent-go:latest", vmRunner.startCfg.Image)
 }
 
 func TestSandboxRunner_Prepare_FlavourDetection_DetectorError(t *testing.T) {
@@ -1346,7 +1346,7 @@ func TestSandboxRunner_Prepare_FlavourDetection_DetectorError(t *testing.T) {
 
 	testAgent := agent.Agent{
 		Name:          "test-agent",
-		Image:         "ghcr.io/stacklok/apiary/test-agent:latest",
+		Image:         "ghcr.io/stacklok/brood-box/test-agent:latest",
 		Command:       []string{"cmd"},
 		DefaultCPUs:   2,
 		DefaultMemory: 2048,
@@ -1375,5 +1375,5 @@ func TestSandboxRunner_Prepare_FlavourDetection_DetectorError(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = sb.Cleanup() }()
 
-	assert.Equal(t, "ghcr.io/stacklok/apiary/test-agent:latest", vmRunner.startCfg.Image)
+	assert.Equal(t, "ghcr.io/stacklok/brood-box/test-agent:latest", vmRunner.startCfg.Image)
 }

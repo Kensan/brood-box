@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2025 Stacklok, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-// Package main is the entrypoint for the apiary CLI.
+// Package main is the entrypoint for the bbox CLI.
 package main
 
 import (
@@ -21,34 +21,34 @@ import (
 
 	"github.com/spf13/cobra"
 
-	infraagent "github.com/stacklok/apiary/internal/infra/agent"
-	infraconfig "github.com/stacklok/apiary/internal/infra/config"
-	"github.com/stacklok/apiary/internal/infra/diff"
-	"github.com/stacklok/apiary/internal/infra/exclude"
-	infraflavour "github.com/stacklok/apiary/internal/infra/flavour"
-	infragit "github.com/stacklok/apiary/internal/infra/git"
-	infralogging "github.com/stacklok/apiary/internal/infra/logging"
-	inframcp "github.com/stacklok/apiary/internal/infra/mcp"
-	infraprogress "github.com/stacklok/apiary/internal/infra/progress"
-	"github.com/stacklok/apiary/internal/infra/review"
-	infrassh "github.com/stacklok/apiary/internal/infra/ssh"
-	infraterminal "github.com/stacklok/apiary/internal/infra/terminal"
-	infravm "github.com/stacklok/apiary/internal/infra/vm"
-	infraruntime "github.com/stacklok/apiary/internal/infra/vm/runtimebin"
-	infraws "github.com/stacklok/apiary/internal/infra/workspace"
-	"github.com/stacklok/apiary/internal/version"
-	"github.com/stacklok/apiary/pkg/domain/agent"
-	domainconfig "github.com/stacklok/apiary/pkg/domain/config"
-	"github.com/stacklok/apiary/pkg/domain/egress"
-	domainflavour "github.com/stacklok/apiary/pkg/domain/flavour"
-	"github.com/stacklok/apiary/pkg/domain/progress"
-	"github.com/stacklok/apiary/pkg/domain/snapshot"
-	"github.com/stacklok/apiary/pkg/domain/workspace"
-	"github.com/stacklok/apiary/pkg/sandbox"
+	infraagent "github.com/stacklok/brood-box/internal/infra/agent"
+	infraconfig "github.com/stacklok/brood-box/internal/infra/config"
+	"github.com/stacklok/brood-box/internal/infra/diff"
+	"github.com/stacklok/brood-box/internal/infra/exclude"
+	infraflavour "github.com/stacklok/brood-box/internal/infra/flavour"
+	infragit "github.com/stacklok/brood-box/internal/infra/git"
+	infralogging "github.com/stacklok/brood-box/internal/infra/logging"
+	inframcp "github.com/stacklok/brood-box/internal/infra/mcp"
+	infraprogress "github.com/stacklok/brood-box/internal/infra/progress"
+	"github.com/stacklok/brood-box/internal/infra/review"
+	infrassh "github.com/stacklok/brood-box/internal/infra/ssh"
+	infraterminal "github.com/stacklok/brood-box/internal/infra/terminal"
+	infravm "github.com/stacklok/brood-box/internal/infra/vm"
+	infraruntime "github.com/stacklok/brood-box/internal/infra/vm/runtimebin"
+	infraws "github.com/stacklok/brood-box/internal/infra/workspace"
+	"github.com/stacklok/brood-box/internal/version"
+	"github.com/stacklok/brood-box/pkg/domain/agent"
+	domainconfig "github.com/stacklok/brood-box/pkg/domain/config"
+	"github.com/stacklok/brood-box/pkg/domain/egress"
+	domainflavour "github.com/stacklok/brood-box/pkg/domain/flavour"
+	"github.com/stacklok/brood-box/pkg/domain/progress"
+	"github.com/stacklok/brood-box/pkg/domain/snapshot"
+	"github.com/stacklok/brood-box/pkg/domain/workspace"
+	"github.com/stacklok/brood-box/pkg/sandbox"
 )
 
 // defaultLogFile is the log file name within the per-VM data directory.
-const defaultLogFile = "apiary.log"
+const defaultLogFile = "broodbox.log"
 
 func main() {
 	if err := rootCmd().Execute(); err != nil {
@@ -82,9 +82,9 @@ func rootCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "apiary <agent-name> [flags] [-- <agent-args...>]",
+		Use:   "bbox <agent-name> [flags] [-- <agent-args...>]",
 		Short: "Run coding agents in hardware-isolated sandbox VMs",
-		Long: `apiary boots a microVM, mounts your workspace, forwards secrets,
+		Long: `bbox boots a microVM, mounts your workspace, forwards secrets,
 and drops into an interactive terminal session with a coding agent.
 
 By default, the workspace is mounted as a COW snapshot. After the agent
@@ -94,16 +94,16 @@ Use --no-review to disable snapshot isolation and mount the workspace directly.
 Supported agents: claude-code, codex, opencode
 
 Example:
-  apiary claude-code
-  apiary codex --cpus 4 --memory 4096
-  apiary opencode --workspace /path/to/project
-  apiary claude-code --no-review
-  apiary claude-code --exclude "*.log" --exclude "tmp/"
-  apiary claude-code --egress-profile locked
-  apiary claude-code --allow-host "custom-api.example.com:443"
-  apiary claude-code --no-mcp
-  apiary claude-code --mcp-group "coding-tools"
-  apiary claude-code -- --help`,
+  bbox claude-code
+  bbox codex --cpus 4 --memory 4096
+  bbox opencode --workspace /path/to/project
+  bbox claude-code --no-review
+  bbox claude-code --exclude "*.log" --exclude "tmp/"
+  bbox claude-code --egress-profile locked
+  bbox claude-code --allow-host "custom-api.example.com:443"
+  bbox claude-code --no-mcp
+  bbox claude-code --mcp-group "coding-tools"
+  bbox claude-code -- --help`,
 		Args:    cobra.MinimumNArgs(1),
 		Version: fmt.Sprintf("%s (%s)", version.Version, version.Commit),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -142,12 +142,12 @@ Example:
 	cmd.Flags().Uint32Var(&memory, "memory", 0, "RAM in MiB (0 = agent default)")
 	cmd.Flags().StringVar(&wsPath, "workspace", "", "Workspace directory to mount (default: current directory)")
 	cmd.Flags().Uint16Var(&sshPort, "ssh-port", 0, "Host SSH port (0 = auto-pick)")
-	cmd.Flags().StringVar(&cfgPath, "config", "", "Config file path (default: ~/.config/apiary/config.yaml)")
+	cmd.Flags().StringVar(&cfgPath, "config", "", "Config file path (default: ~/.config/broodbox/config.yaml)")
 	cmd.Flags().StringVar(&image, "image", "", "Override OCI image reference")
 	cmd.Flags().BoolVar(&debug, "debug", false, "Enable debug-level logging to file (default: info level)")
 	cmd.Flags().BoolVar(&noReview, "no-review", false, "Disable workspace snapshot isolation (mount workspace directly)")
 	cmd.Flags().StringSliceVar(&excludes, "exclude", nil, "Additional exclude patterns for workspace snapshot (repeatable)")
-	cmd.Flags().StringVar(&logFile, "log-file", "", "Override log file path (default: ~/.config/apiary/vms/<vm-name>/apiary.log)")
+	cmd.Flags().StringVar(&logFile, "log-file", "", "Override log file path (default: ~/.config/broodbox/vms/<vm-name>/broodbox.log)")
 	cmd.Flags().StringVar(&egressProfile, "egress-profile", "", "Egress restriction level: permissive, standard, locked (default: agent's built-in default)")
 	cmd.Flags().StringSliceVar(&allowHosts, "allow-host", nil, "Additional allowed egress DNS hostname[:port] — no IP addresses (repeatable)")
 	cmd.Flags().BoolVar(&noMCP, "no-mcp", false, "Disable MCP tool proxy (enabled by default, discovers servers from ToolHive)")
@@ -568,7 +568,7 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 
 // openLogFile opens (or creates) the log file, truncating it each session.
 // When no override is given, the log is placed in the per-VM data directory
-// at ~/.config/apiary/vms/<vmName>/apiary.log.
+// at ~/.config/broodbox/vms/<vmName>/broodbox.log.
 // Returns the resolved path, the file, a closer, and any error.
 func openLogFile(override, vmName string) (string, *os.File, io.Closer, error) {
 	logPath := override
@@ -577,7 +577,7 @@ func openLogFile(override, vmName string) (string, *os.File, io.Closer, error) {
 		if err != nil {
 			return "", nil, nil, fmt.Errorf("getting home dir: %w", err)
 		}
-		logDir := filepath.Join(home, ".config", "apiary", "vms", vmName)
+		logDir := filepath.Join(home, ".config", "broodbox", "vms", vmName)
 		if err := os.MkdirAll(logDir, 0o700); err != nil {
 			return "", nil, nil, fmt.Errorf("creating log dir: %w", err)
 		}
@@ -758,11 +758,11 @@ func warnLocalConfigOverrides(w io.Writer, localCfg, globalCfg *domainconfig.Con
 	}
 
 	_, _ = fmt.Fprintf(w, "\n")
-	_, _ = fmt.Fprintf(w, "Security: .apiary.yaml in this workspace modifies sandbox settings:\n")
+	_, _ = fmt.Fprintf(w, "Security: .broodbox.yaml in this workspace modifies sandbox settings:\n")
 	for _, msg := range warnings {
 		_, _ = fmt.Fprintf(w, "  - %s\n", msg)
 	}
-	_, _ = fmt.Fprintf(w, "Review .apiary.yaml before proceeding if this is unexpected.\n")
+	_, _ = fmt.Fprintf(w, "Review .broodbox.yaml before proceeding if this is unexpected.\n")
 	_, _ = fmt.Fprintf(w, "\n")
 }
 
@@ -787,7 +787,7 @@ func sanitizeAll(ss []string) []string {
 }
 
 // runtimeCacheDir returns the directory used for extracting embedded runtime
-// binaries. Follows XDG_CACHE_HOME, defaulting to ~/.cache/apiary/runtime/.
+// binaries. Follows XDG_CACHE_HOME, defaulting to ~/.cache/broodbox/runtime/.
 func runtimeCacheDir() (string, error) {
 	cacheBase := os.Getenv("XDG_CACHE_HOME")
 	if cacheBase == "" {
@@ -797,5 +797,5 @@ func runtimeCacheDir() (string, error) {
 		}
 		cacheBase = filepath.Join(home, ".cache")
 	}
-	return filepath.Join(cacheBase, "apiary", "runtime"), nil
+	return filepath.Join(cacheBase, "broodbox", "runtime"), nil
 }

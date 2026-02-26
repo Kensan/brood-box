@@ -7,8 +7,8 @@ import (
 	"io"
 	"log/slog"
 
-	"github.com/stacklok/apiary/internal/infra/exclude"
-	"github.com/stacklok/apiary/pkg/domain/snapshot"
+	"github.com/stacklok/brood-box/internal/infra/exclude"
+	"github.com/stacklok/brood-box/pkg/domain/snapshot"
 )
 
 // BuildSnapshotMatchers loads exclude configuration and returns matchers for

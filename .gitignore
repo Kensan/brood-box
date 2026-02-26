@@ -1,7 +1,7 @@
 # Build artifacts
 bin/
 .task/
-internal/infra/vm/initbin/apiary-init
+internal/infra/vm/initbin/bbox-init
 internal/infra/vm/runtimebin/propolis-runner
 internal/infra/vm/runtimebin/libkrun.so.1
 internal/infra/vm/runtimebin/libkrunfw.so.5

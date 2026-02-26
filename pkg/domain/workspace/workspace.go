@@ -8,7 +8,7 @@ package workspace
 import (
 	"context"
 
-	"github.com/stacklok/apiary/pkg/domain/snapshot"
+	"github.com/stacklok/brood-box/pkg/domain/snapshot"
 )
 
 // Snapshot holds references to the original and snapshot workspace paths.

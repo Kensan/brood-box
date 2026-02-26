@@ -39,7 +39,7 @@ jobs:
       - name: Install Task
         uses: go-task/setup-task@v1
 
-      - name: Build apiary-init (for go:embed)
+      - name: Build bbox-init (for go:embed)
         run: task build-init
 
       - name: Run tests
@@ -73,7 +73,7 @@ jobs:
         with:
           install-only: true
 
-      - name: Build apiary-init (for go:embed)
+      - name: Build bbox-init (for go:embed)
         run: task build-init
 
       - name: Run linter

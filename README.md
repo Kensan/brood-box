@@ -1,9 +1,9 @@
-# apiary
+# Brood Box
 
 Run coding agents in hardware-isolated microVMs. Review every change before it touches your workspace.
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Go Report Card](https://goreportcard.com/badge/github.com/stacklok/apiary)](https://goreportcard.com/report/github.com/stacklok/apiary)
+[![Go Report Card](https://goreportcard.com/badge/github.com/stacklok/brood-box)](https://goreportcard.com/report/github.com/stacklok/brood-box)
 
 <!-- TODO: Add a terminal recording / GIF demo here showing the full workflow -->
 
@@ -14,13 +14,13 @@ and the ability to run arbitrary code. That's a lot of trust to hand over.
 
 Containers help, but they share the host kernel. One escape and you're done.
 
-Enter **apiary**. It boots a lightweight microVM (via [libkrun](https://github.com/containers/libkrun) and KVM),
+Enter **Brood Box**. It boots a lightweight microVM (via [libkrun](https://github.com/containers/libkrun) and KVM),
 mounts a copy-on-write snapshot of your workspace, forwards only the secrets you
 specify, and lets you review every file change before it lands. Hardware isolation
 with the feel of a local terminal.
 
 ```bash
-apiary claude-code
+bbox claude-code
 ```
 
 And that's it. You get a full interactive session with Claude Code running inside a
@@ -54,14 +54,14 @@ task build-dev
 ```
 
 This downloads pre-built propolis runtime artifacts and embeds them into a
-self-contained `apiary` binary (pure Go, no CGO). No system `libkrun-devel`
+self-contained `bbox` binary (pure Go, no CGO). No system `libkrun-devel`
 needed. The binary lands in `bin/`.
 
 ### Run
 
 ```bash
 export ANTHROPIC_API_KEY="sk-ant-..."
-apiary claude-code
+bbox claude-code
 ```
 
 The workflow:
@@ -76,48 +76,48 @@ The workflow:
 
 ```bash
 # Run with a specific agent
-apiary claude-code
-apiary codex
-apiary opencode
+bbox claude-code
+bbox codex
+bbox opencode
 
 # Override resources
-apiary claude-code --cpus 4 --memory 4096
+bbox claude-code --cpus 4 --memory 4096
 
 # Use a different workspace
-apiary claude-code --workspace /path/to/project
+bbox claude-code --workspace /path/to/project
 
 # Disable snapshot isolation (mount workspace directly)
-apiary claude-code --no-review
+bbox claude-code --no-review
 
 # Exclude files from snapshot
-apiary claude-code --exclude "*.log" --exclude "tmp/"
+bbox claude-code --exclude "*.log" --exclude "tmp/"
 
 # Lock down egress to LLM provider only
-apiary claude-code --egress-profile locked
+bbox claude-code --egress-profile locked
 
 # Allow additional egress hosts (DNS hostnames only, no IP addresses)
-apiary claude-code --allow-host "internal-api.example.com:443"
+bbox claude-code --allow-host "internal-api.example.com:443"
 
 # Disable MCP proxy
-apiary claude-code --no-mcp
+bbox claude-code --no-mcp
 
 # Use a specific ToolHive group for MCP servers
-apiary claude-code --mcp-group "coding-tools"
+bbox claude-code --mcp-group "coding-tools"
 
 # Pass agent-specific arguments (after --)
-apiary claude-code -- --help
+bbox claude-code -- --help
 
 # List available agents
-apiary list
+bbox list
 ```
 
 ## Configuration
 
-Apiary uses a three-level config system: CLI flags > per-workspace > global. CLI flags always win.
+Brood Box uses a three-level config system: CLI flags > per-workspace > global. CLI flags always win.
 
 ### Global config
 
-`~/.config/apiary/config.yaml`:
+`~/.config/broodbox/config.yaml`:
 
 ```yaml
 defaults:
@@ -150,7 +150,7 @@ agents:
 
 ### Per-workspace config
 
-`.apiary.yaml` in your project root:
+`.broodbox.yaml` in your project root:
 
 ```yaml
 defaults:
@@ -163,13 +163,13 @@ review:
 ```
 
 Note that `review.enabled` is **ignored** in per-workspace config for security.
-An untrusted repo can't disable review on your behalf.
+An untrusted repo cannot disable review on your behalf.
 
 Similarly, `egress_profile` in per-workspace config cannot widen the global profile.
 
 ### Exclude patterns
 
-`.apiaryignore` in your project root uses gitignore syntax:
+`.broodboxignore` in your project root uses gitignore syntax:
 
 ```gitignore
 # Exclude build artifacts
@@ -194,22 +194,22 @@ Each agent comes with DNS-aware egress policies. Three profiles are available:
 
 ```bash
 # Lock it down
-apiary claude-code --egress-profile locked
+bbox claude-code --egress-profile locked
 
 # Or open it up
-apiary claude-code --egress-profile permissive
+bbox claude-code --egress-profile permissive
 
 # Add specific hosts to standard profile (DNS hostnames only, no IP addresses)
-apiary claude-code --allow-host "my-registry.example.com:443"
+bbox claude-code --allow-host "my-registry.example.com:443"
 ```
 
 ## Supported Agents
 
 | Agent | Command | Image | Default Resources |
 |---|---|---|---|
-| Claude Code | `apiary claude-code` | `ghcr.io/stacklok/apiary/claude-code` | 2 vCPUs, 2 GiB RAM |
-| Codex | `apiary codex` | `ghcr.io/stacklok/apiary/codex` | 2 vCPUs, 2 GiB RAM |
-| OpenCode | `apiary opencode` | `ghcr.io/stacklok/apiary/opencode` | 2 vCPUs, 2 GiB RAM |
+| Claude Code | `bbox claude-code` | `ghcr.io/stacklok/brood-box/claude-code` | 2 vCPUs, 2 GiB RAM |
+| Codex | `bbox codex` | `ghcr.io/stacklok/brood-box/codex` | 2 vCPUs, 2 GiB RAM |
+| OpenCode | `bbox opencode` | `ghcr.io/stacklok/brood-box/opencode` | 2 vCPUs, 2 GiB RAM |
 
 You can also define custom agents in your config:
 
@@ -228,7 +228,7 @@ agents:
 ## How It Works
 
 ```
-apiary claude-code
+bbox claude-code
       │
       ▼
   Create COW snapshot of workspace
@@ -240,7 +240,7 @@ apiary claude-code
   Boot microVM (libkrun/KVM) with virtio-fs workspace mount
       │
       ▼
-  Guest boots (apiary-init as PID 1):
+  Guest boots (bbox-init as PID 1):
     → Mount filesystems, configure networking
     → Start embedded SSH server
     → Wait for connection
@@ -259,7 +259,7 @@ apiary claude-code
   Cleanup snapshot
 ```
 
-The guest VM runs a custom Go init binary (`apiary-init`) as PID 1. No shell scripts,
+The guest VM runs a custom Go init binary (`bbox-init`) as PID 1. No shell scripts,
 no external sshd, no iproute2. Everything the guest needs is compiled into a single
 binary that handles boot, networking, workspace mounting, and an embedded SSH server.
 
@@ -271,29 +271,29 @@ review begins, so the agent can't modify files during your review.
 
 ## Security Model
 
-Apiary's isolation is built on several layers:
+Brood Box's isolation is built on several layers:
 
 - **KVM hardware virtualization** -- The agent runs in a real VM, not a container with a shared kernel
 - **Ephemeral SSH keys** -- ECDSA P-256 keys generated per session, destroyed on exit
 - **Localhost-only networking** -- SSH port forwards bind to 127.0.0.1 only
-- **Non-overridable security patterns** -- Files like `.env`, `*.pem`, `.ssh/`, `.aws/` are always excluded from snapshots, even if `.apiaryignore` tries to negate them
+- **Non-overridable security patterns** -- Files like `.env`, `*.pem`, `.ssh/`, `.aws/` are always excluded from snapshots, even if `.broodboxignore` tries to negate them
 - **Shell-escaped environment injection** -- All forwarded values are single-quote escaped
 - **VM stopped before review** -- Prevents the agent from modifying files while you're reviewing
 - **Hash verification on flush** -- Files are re-hashed between diff and flush to catch any modifications
 - **Permission stripping** -- setuid, setgid, and sticky bits are stripped when flushing changes
 - **Path traversal protection** -- Symlinks are validated in-bounds before copying
-- **Per-workspace config restrictions** -- `review.enabled` and egress widening are ignored in `.apiary.yaml`
+- **Per-workspace config restrictions** -- `review.enabled` and egress widening are ignored in `.broodbox.yaml`
 
 ## Building from Source
 
 ```bash
-# Build self-contained apiary (downloads + embeds propolis runtime)
+# Build self-contained bbox (downloads + embeds propolis runtime)
 task build-dev
 
-# Build apiary only (pure Go, no CGO, needs propolis-runner on PATH)
+# Build bbox only (pure Go, no CGO, needs propolis-runner on PATH)
 task build
 
-# Build apiary + propolis-runner from system libkrun (requires libkrun-devel)
+# Build bbox + propolis-runner from system libkrun (requires libkrun-devel)
 task build-dev-system
 
 # Build guest init binary

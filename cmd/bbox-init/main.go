@@ -3,7 +3,7 @@
 
 //go:build linux
 
-// apiary-init is the PID 1 init process for apiary guest VMs.
+// bbox-init is the PID 1 init process for Brood Box guest VMs.
 // It mounts filesystems, configures networking, and starts an embedded
 // SSH server — replacing the shell init script and external dependencies
 // (dropbear, iproute2, mount).
@@ -17,7 +17,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/stacklok/apiary/internal/guest/seccomp"
+	"github.com/stacklok/brood-box/internal/guest/seccomp"
 	"github.com/stacklok/propolis/guest/boot"
 	"github.com/stacklok/propolis/guest/reaper"
 )

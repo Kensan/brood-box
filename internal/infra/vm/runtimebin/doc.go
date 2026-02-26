@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package runtimebin optionally embeds propolis-runner and libkrun/libkrunfw
-// shared libraries into the apiary binary. When built with the embed_runtime
+// shared libraries into the bbox binary. When built with the embed_runtime
 // tag, the package provides extract.Source instances that extract the embedded
 // binaries to a versioned cache directory on first run. Without the tag, all
 // sources return nil and Available() returns false.
