@@ -18,7 +18,6 @@ import (
 	"github.com/stacklok/toolhive-core/logging"
 	thvauth "github.com/stacklok/toolhive/pkg/auth"
 	"github.com/stacklok/toolhive/pkg/groups"
-	thvlogger "github.com/stacklok/toolhive/pkg/logger"
 	"github.com/stacklok/toolhive/pkg/vmcp"
 	"github.com/stacklok/toolhive/pkg/vmcp/aggregator"
 	vmcpauthfactory "github.com/stacklok/toolhive/pkg/vmcp/auth/factory"
@@ -214,7 +213,7 @@ func (r *statusRecorder) WriteHeader(code int) {
 func initToolhiveLogger(w io.Writer) {
 	if w == nil {
 		zap.ReplaceGlobals(zap.NewNop())
-		thvlogger.Set(slog.New(slog.NewJSONHandler(io.Discard, nil)))
+		slog.SetDefault(slog.New(slog.NewJSONHandler(io.Discard, nil)))
 		return
 	}
 
@@ -223,7 +222,7 @@ func initToolhiveLogger(w io.Writer) {
 	core := zapcore.NewCore(enc, zapcore.AddSync(w), zap.DebugLevel)
 	zap.ReplaceGlobals(zap.New(core))
 
-	// Redirect the toolhive slog singleton — this is the primary logger used
+	// Redirect the default slog logger — this is the primary logger used
 	// by vmcp internals (aggregator, discovery, server, etc.).
-	thvlogger.Set(logging.New(logging.WithOutput(w)))
+	slog.SetDefault(logging.New(logging.WithOutput(w)))
 }
