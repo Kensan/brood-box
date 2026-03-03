@@ -13,7 +13,4 @@ var runner []byte
 //go:embed libkrun.so.1
 var libkrun []byte
 
-//go:embed libkrunfw.so.5
-var libkrunfw []byte
-
 const available = true

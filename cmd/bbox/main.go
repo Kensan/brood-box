@@ -19,7 +19,9 @@ import (
 	"syscall"
 	"unicode"
 
+	"github.com/adrg/xdg"
 	"github.com/spf13/cobra"
+	"github.com/stacklok/propolis/extract"
 
 	infraagent "github.com/stacklok/brood-box/internal/infra/agent"
 	infraconfig "github.com/stacklok/brood-box/internal/infra/config"
@@ -76,6 +78,7 @@ func rootCmd() *cobra.Command {
 		mcpConfig     string
 		noGitToken    bool
 		noGitSSHAgent bool
+		noFirmwareDL  bool
 		timings       bool
 	)
 
@@ -128,6 +131,7 @@ Example:
 				mcpConfig:     mcpConfig,
 				noGitToken:    noGitToken,
 				noGitSSHAgent: noGitSSHAgent,
+				noFirmwareDL:  noFirmwareDL,
 				timings:       timings,
 				commandArgs:   commandArgs,
 			})
@@ -154,6 +158,7 @@ Example:
 	cmd.Flags().StringVar(&mcpConfig, "mcp-config", "", "Path to custom vmcp config YAML")
 	cmd.Flags().BoolVar(&noGitToken, "no-git-token", false, "Disable forwarding GITHUB_TOKEN/GH_TOKEN into the VM")
 	cmd.Flags().BoolVar(&noGitSSHAgent, "no-git-ssh-agent", false, "Disable SSH agent forwarding into the VM")
+	cmd.Flags().BoolVar(&noFirmwareDL, "no-firmware-download", false, "Disable firmware download (use system libkrunfw only)")
 	cmd.Flags().BoolVar(&timings, "timings", false, "Print per-phase timing summary after run")
 
 	// Add list subcommand.
@@ -196,6 +201,7 @@ type runFlags struct {
 	mcpConfig     string
 	noGitToken    bool
 	noGitSSHAgent bool
+	noFirmwareDL  bool
 	timings       bool
 	commandArgs   []string
 }
@@ -276,6 +282,9 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 	if err != nil {
 		logger.Warn("failed to load config, using defaults", "error", err)
 	}
+	if cfg == nil {
+		cfg = &domainconfig.Config{}
+	}
 
 	// Load per-workspace config and merge.
 	localCfg, err := infraconfig.LoadFromPath(filepath.Join(ws, domainconfig.LocalConfigFile))
@@ -284,6 +293,9 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 	}
 	warnLocalConfigOverrides(os.Stderr, localCfg, cfg)
 	cfg = domainconfig.MergeConfigs(cfg, localCfg)
+	if cfg == nil {
+		cfg = &domainconfig.Config{}
+	}
 
 	if cfg.Agents != nil {
 		// Register custom agents from config (only those not already built-in).
@@ -369,8 +381,48 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 		MCP:              cfg.MCP,
 	}
 
+	firmwareDownloadEnabled := true
+	if cfg.Runtime.FirmwareDownload != nil {
+		firmwareDownloadEnabled = *cfg.Runtime.FirmwareDownload
+	}
+	if flags.noFirmwareDL {
+		firmwareDownloadEnabled = false
+	}
+
 	// Wire VM runner options (embedded runtime when available).
 	var vmRunnerOpts []infravm.RunnerOption
+	var firmwareCachePath string
+	if firmwareDownloadEnabled {
+		var fwErr error
+		firmwareCachePath, fwErr = firmwareCacheDir()
+		if fwErr != nil {
+			return fmt.Errorf("resolving firmware cache directory: %w", fwErr)
+		}
+	}
+	firmwareRes, fwErr := infravm.ResolveFirmware(ctx, infravm.FirmwareResolveOpts{
+		CacheDir:        firmwareCachePath,
+		Version:         infraruntime.Version,
+		DownloadEnabled: firmwareDownloadEnabled,
+		Logger:          logger,
+	})
+	if fwErr != nil {
+		return fmt.Errorf("resolving firmware: %w", fwErr)
+	}
+	dataDir, dataErr := infravm.VMDataDir(vmName)
+	if dataErr != nil {
+		return fmt.Errorf("resolving VM data directory: %w", dataErr)
+	}
+	refPath := filepath.Join(dataDir, "firmware.ref.json")
+	if err := infravm.WriteFirmwareReference(refPath, infravm.FirmwareReference{
+		Version:   firmwareRes.Version,
+		Source:    firmwareRes.Source,
+		Path:      firmwareRes.Dir,
+		URL:       firmwareRes.URL,
+		Timestamp: firmwareRes.Timestamp,
+	}); err != nil {
+		return fmt.Errorf("writing firmware reference: %w", err)
+	}
+	vmRunnerOpts = append(vmRunnerOpts, infravm.WithFirmwareSource(extract.Dir(firmwareRes.Dir)))
 	if infraruntime.Available() {
 		cacheDir, cdErr := runtimeCacheDir()
 		if cdErr != nil {
@@ -378,7 +430,6 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 		}
 		vmRunnerOpts = append(vmRunnerOpts,
 			infravm.WithRuntimeSource(infraruntime.RuntimeSource()),
-			infravm.WithFirmwareSource(infraruntime.FirmwareSource()),
 			infravm.WithCacheDir(cacheDir),
 		)
 		logger.Info("using embedded propolis runtime", "version", infraruntime.Version)
@@ -687,6 +738,16 @@ func warnLocalConfigOverrides(w io.Writer, localCfg, globalCfg *domainconfig.Con
 		warnings = append(warnings, fmt.Sprintf("sets git SSH agent forwarding: %t", *localCfg.Git.ForwardSSHAgent))
 	}
 
+	// Runtime — firmware download preference (local cannot re-enable if global disables).
+	if localCfg.Runtime.FirmwareDownload != nil {
+		if *localCfg.Runtime.FirmwareDownload &&
+			globalCfg.Runtime.FirmwareDownload != nil && !*globalCfg.Runtime.FirmwareDownload {
+			warnings = append(warnings, "firmware download re-enable is ignored — global config disables it")
+		} else {
+			warnings = append(warnings, fmt.Sprintf("sets firmware download: %t", *localCfg.Runtime.FirmwareDownload))
+		}
+	}
+
 	// Per-agent overrides — sorted for deterministic output.
 	for _, name := range slices.Sorted(maps.Keys(localCfg.Agents)) {
 		safeName := sanitizeValue(name)
@@ -778,13 +839,19 @@ func sanitizeAll(ss []string) []string {
 // runtimeCacheDir returns the directory used for extracting embedded runtime
 // binaries. Follows XDG_CACHE_HOME, defaulting to ~/.cache/broodbox/runtime/.
 func runtimeCacheDir() (string, error) {
-	cacheBase := os.Getenv("XDG_CACHE_HOME")
+	cacheBase := xdg.CacheHome
 	if cacheBase == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", fmt.Errorf("determining home directory: %w", err)
-		}
-		cacheBase = filepath.Join(home, ".cache")
+		return "", errors.New("xdg cache home is empty")
 	}
 	return filepath.Join(cacheBase, "broodbox", "runtime"), nil
+}
+
+// firmwareCacheDir returns the directory used for caching libkrunfw artifacts.
+// Follows XDG_CACHE_HOME, defaulting to ~/.cache/broodbox/firmware/.
+func firmwareCacheDir() (string, error) {
+	cacheBase := xdg.CacheHome
+	if cacheBase == "" {
+		return "", errors.New("xdg cache home is empty")
+	}
+	return filepath.Join(cacheBase, "broodbox", "firmware"), nil
 }

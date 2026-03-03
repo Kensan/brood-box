@@ -56,7 +56,7 @@ type DefaultSandboxDepsOpts struct {
 	// RuntimeSource provides embedded propolis-runner and libkrun (optional).
 	RuntimeSource extract.Source
 
-	// FirmwareSource provides embedded libkrunfw (optional).
+	// FirmwareSource provides libkrunfw (optional).
 	FirmwareSource extract.Source
 
 	// CacheDir is the directory used by bundle-based Sources for extraction.

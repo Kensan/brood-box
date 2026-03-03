@@ -74,6 +74,7 @@ bbox <agent-name> [flags] [-- <agent-args...>]
 | `--mcp-config` | (none) | Path to custom vmcp config YAML |
 | `--no-git-token` | `false` | Disable forwarding GITHUB_TOKEN/GH_TOKEN into the VM |
 | `--no-git-ssh-agent` | `false` | Disable SSH agent forwarding into the VM |
+| `--no-firmware-download` | `false` | Disable firmware download (use system libkrunfw only) |
 | `--log-file` | `~/.config/broodbox/vms/<vm>/broodbox.log` | Override log file path |
 | `--debug` | `false` | Enable debug-level logging to file |
 
@@ -154,6 +155,10 @@ mcp:
 git:
   forward_token: true       # Forward GITHUB_TOKEN/GH_TOKEN (default: true)
   forward_ssh_agent: true   # Forward SSH agent for git+ssh (default: true)
+
+# Host runtime dependencies
+runtime:
+  firmware_download: true   # Download libkrunfw at runtime (default: true)
 
 # Per-agent overrides and custom agents
 agents:

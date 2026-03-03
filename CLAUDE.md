@@ -10,14 +10,14 @@ Module: `github.com/stacklok/brood-box`
 **IMPORTANT**: ALWAYS use `task <target>` for building, testing, linting, formatting, and running. NEVER invoke `go build`, `go test`, `golangci-lint`, `go fmt`, `goimports`, or `podman build` directly — the Taskfile wraps these with the correct flags, ldflags, env vars, and dependency ordering. Running raw commands will produce incorrect builds or miss steps.
 
 ```bash
-task build                  # Build bbox (pure Go, no CGO)
+task build                  # Build self-contained bbox with embedded propolis runtime
 task build-init             # Cross-compile bbox-init for guest VM
-task build-dev              # Build self-contained bbox with embedded propolis runtime (Linux, requires gh CLI)
-task build-dev-darwin       # Build self-contained bbox with embedded propolis runtime (macOS, requires gh CLI)
+task build-dev              # Alias for task build (Linux)
+task build-dev-darwin       # Alias for task build (macOS)
 task build-dev-system       # Build bbox + propolis-runner from system libkrun (Linux, requires libkrun-devel)
 task build-dev-system-darwin # Build bbox + propolis-runner from system libkrun (macOS, requires Homebrew libkrun)
 task fetch-runtime          # Download pre-built propolis runtime from GitHub Release
-task fetch-firmware         # Download pre-built propolis firmware from GitHub Release
+task fetch-firmware         # Optional: prefetch propolis firmware
 task test                   # go test -v -race ./...
 task test-coverage          # Run tests with coverage report
 task lint                   # golangci-lint run ./...
@@ -118,12 +118,12 @@ Execution order: create snapshot → start VM → terminal → stop VM → diff 
 
 ## Things That Will Bite You
 
-- **propolis is a tagged dependency**: `go.mod` depends on `github.com/stacklok/propolis` as a versioned module. `build-dev` downloads pre-built propolis runtime artifacts and embeds them — no local checkout or system libkrun needed. Use `build-dev-system` to build propolis-runner from source (requires `libkrun-devel`).
+- **propolis is a tagged dependency**: `go.mod` depends on `github.com/stacklok/propolis` as a versioned module. `build` downloads pre-built propolis runtime artifacts and embeds them — no local checkout or system libkrun needed. Use `build-dev-system` to build propolis-runner from source (requires `libkrun-devel`).
 - **CGO boundary**: Brood Box itself is pure Go (`CGO_ENABLED=0`). The embedded propolis-runner was pre-built with CGO elsewhere — no CGO needed at bbox build time.
-- **`gh` CLI dependency**: `task fetch-runtime` and `task fetch-firmware` require the GitHub CLI (`gh`) to download release artifacts.
+- **`gh` CLI dependency**: `task fetch-runtime` uses the GitHub CLI (`gh`) to download release artifacts. Firmware is downloaded at runtime via HTTPS by default.
 - **Domain purity**: `pkg/domain/` must never import from `internal/infra/` or `pkg/sandbox/`. This is the most important architectural invariant — break it and you break the entire DDD foundation.
 - **Always use `task`**: Never run `go build`, `go test ./...`, `golangci-lint`, `go fmt`, or `goimports` directly. The Taskfile sets critical env vars and flags. Raw commands will silently produce wrong results.
-- **macOS entitlements**: `propolis-runner` must be code-signed with `assets/entitlements.plist` on macOS (Hypervisor.framework requirement). `task build-dev-darwin` handles this automatically. On macOS, install libkrun via `brew tap slp/krun && brew install libkrun libkrunfw`.
+- **macOS entitlements**: `propolis-runner` must be code-signed with `assets/entitlements.plist` on macOS (Hypervisor.framework requirement). `task build-dev-system-darwin` handles this automatically. On macOS, install libkrun via `brew tap slp/krun && brew install libkrun libkrunfw`.
 
 ## Verification
 

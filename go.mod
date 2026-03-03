@@ -7,8 +7,10 @@ go 1.25.7
 
 require (
 	charm.land/lipgloss/v2 v2.0.0
+	github.com/adrg/xdg v0.5.3
 	github.com/charmbracelet/glamour v0.10.0
 	github.com/elastic/go-seccomp-bpf v1.6.0
+	github.com/gofrs/flock v0.13.0
 	github.com/pelletier/go-toml/v2 v2.2.4
 	github.com/sabhiram/go-gitignore v0.0.0-20210923224102-525f6e181f06
 	github.com/sergi/go-diff v1.4.0
@@ -30,7 +32,6 @@ require (
 	dario.cat/mergo v1.0.2 // indirect
 	github.com/1password/onepassword-sdk-go v0.3.1 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
-	github.com/adrg/xdg v0.5.3 // indirect
 	github.com/alecthomas/chroma/v2 v2.14.0 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/apparentlymart/go-cidr v1.1.0 // indirect

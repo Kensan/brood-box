@@ -58,13 +58,13 @@ tasks:
       - internal/infra/vm/initbin/bbox-init
 
   build:
-    desc: Build bbox binary (pure Go, no CGO)
-    deps: [build-init]
+    desc: Build self-contained bbox with embedded propolis runtime
+    deps: [build-init, fetch-runtime]
     env:
       CGO_ENABLED: "0"
     cmds:
       - mkdir -p bin
-      - go build -ldflags "{{.LDFLAGS}}" -o bin/{{.BINARY_NAME}} ./cmd/bbox
+      - go build -tags embed_runtime -ldflags "{{.LDFLAGS_EMBED}}" -o bin/{{.BINARY_NAME}} ./cmd/bbox
     sources:
       - ./**/*.go
       - go.mod
@@ -73,24 +73,16 @@ tasks:
       - bin/{{.BINARY_NAME}}
 
   build-dev:
-    desc: Build self-contained bbox with embedded propolis runtime
+    desc: Build self-contained bbox with embedded propolis runtime (alias)
     platforms: [linux]
-    deps: [build-init, fetch-runtime, fetch-firmware]
-    env:
-      CGO_ENABLED: "0"
     cmds:
-      - mkdir -p bin
-      - go build -tags embed_runtime -ldflags "{{.LDFLAGS_EMBED}}" -o bin/{{.BINARY_NAME}} ./cmd/bbox
+      - task: build
 
   build-dev-darwin:
-    desc: Build self-contained bbox with embedded propolis runtime (macOS)
+    desc: Build self-contained bbox with embedded propolis runtime (alias)
     platforms: [darwin]
-    deps: [build-init, fetch-runtime, fetch-firmware]
-    env:
-      CGO_ENABLED: "0"
     cmds:
-      - mkdir -p bin
-      - go build -tags embed_runtime -ldflags "{{.LDFLAGS_EMBED}}" -o bin/{{.BINARY_NAME}} ./cmd/bbox
+      - task: build
 
   build-dev-system:
     desc: Build bbox + propolis-runner from system libkrun (requires libkrun-devel)
