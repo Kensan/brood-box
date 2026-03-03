@@ -12,8 +12,8 @@ import (
 	"io"
 	"strings"
 
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/glamour"
-	"github.com/charmbracelet/lipgloss"
 
 	"github.com/stacklok/brood-box/pkg/domain/snapshot"
 )
