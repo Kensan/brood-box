@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -14,8 +15,21 @@ import (
 )
 
 // ChownFunc abstracts file ownership changes for testability.
-// Production code passes os.Chown; tests can pass a recording mock.
+// Production code uses bestEffortLchown; tests can pass a recording mock.
 type ChownFunc func(path string, uid, gid int) error
+
+// bestEffortLchown attempts os.Lchown and silently ignores permission errors.
+// On macOS non-root users cannot chown to a different UID; the guest init
+// will fix ownership at boot time. Lchown is used instead of Chown to avoid
+// following symlinks in the rootfs.
+func bestEffortLchown(path string, uid, gid int) error {
+	if err := os.Lchown(path, uid, gid); err != nil {
+		if !os.IsPermission(err) {
+			slog.Warn("lchown failed", "path", path, "uid", uid, "gid", gid, "err", err)
+		}
+	}
+	return nil
+}
 
 // sandboxHome is the home directory of the sandbox user inside the guest.
 // Config files are written here because /workspace is mounted via virtiofs
