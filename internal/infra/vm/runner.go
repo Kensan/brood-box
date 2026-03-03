@@ -149,7 +149,7 @@ func (r *PropolisRunner) Start(ctx context.Context, cfg domvm.VMConfig) (domvm.V
 			hooks.InjectFile("/etc/ssh/ssh_host_ecdsa_key", hostKeyPEM, 0o600),
 			InjectInitBinary(),
 			hooks.InjectEnvFile("/etc/sandbox-env", cfg.EnvVars),
-			InjectGitConfig(cfg.GitIdentity, cfg.HasGitToken, os.Chown),
+			InjectGitConfig(cfg.GitIdentity, cfg.HasGitToken, bestEffortLchown),
 		),
 		propolis.WithInitOverride("/bbox-init"),
 		propolis.WithPostBoot(func(ctx context.Context, _ *propolis.VM) error {
@@ -198,7 +198,7 @@ func (r *PropolisRunner) Start(ctx context.Context, cfg domvm.VMConfig) (domvm.V
 	// Add MCP config injection hook if host services and agent format are set.
 	if len(cfg.HostServices) > 0 && cfg.MCPConfigFormat != "" && cfg.MCPConfigFormat != agent.MCPConfigFormatNone {
 		opts = append(opts, propolis.WithRootFSHook(
-			InjectMCPConfig(cfg.MCPConfigFormat, topology.GatewayIP, cfg.HostServices[0].Port, os.Chown),
+			InjectMCPConfig(cfg.MCPConfigFormat, topology.GatewayIP, cfg.HostServices[0].Port, bestEffortLchown),
 		))
 	}
 
