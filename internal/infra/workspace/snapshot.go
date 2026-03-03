@@ -12,8 +12,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 
+	"github.com/stacklok/brood-box/internal/infra/process"
 	"github.com/stacklok/brood-box/pkg/domain/snapshot"
 	domws "github.com/stacklok/brood-box/pkg/domain/workspace"
 )
@@ -207,7 +207,7 @@ func CleanupStaleSnapshots(workspacePath string, logger *slog.Logger) {
 		// If the sentinel contains a PID, check if that process is still alive.
 		// Skip cleanup for snapshots owned by a running process.
 		if pid, err := strconv.Atoi(strings.TrimSpace(string(data))); err == nil && pid > 0 {
-			if isProcessAlive(pid) {
+			if process.IsAlive(pid) {
 				logger.Debug("skipping snapshot owned by running process",
 					"path", stalePath, "pid", pid)
 				continue
@@ -219,16 +219,4 @@ func CleanupStaleSnapshots(workspacePath string, logger *slog.Logger) {
 			logger.Error("failed to remove stale snapshot", "path", stalePath, "error", err)
 		}
 	}
-}
-
-// isProcessAlive checks if a process with the given PID is still running.
-// Uses signal 0 which checks for process existence without sending a signal.
-func isProcessAlive(pid int) bool {
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
-	// Signal 0 checks existence without actually sending a signal.
-	err = proc.Signal(syscall.Signal(0))
-	return err == nil
 }

@@ -292,7 +292,7 @@ func (v *propolisVM) SSHHostKey() ssh.PublicKey {
 
 // vmDataDir returns a per-VM data directory under ~/.config/broodbox/vms/<name>/data.
 // This isolates state files and locks so multiple VMs can run in parallel.
-// The parent directory is used by bbox for logs and should not be cleaned.
+// The parent directory is used by bbox for logs and is cleaned by CleanupStaleLogs.
 func vmDataDir(name string) (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
