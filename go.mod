@@ -15,7 +15,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/stacklok/propolis v0.0.7-0.20260303111539-b54bd3284abf
 	github.com/stacklok/toolhive v0.10.0
-	github.com/stacklok/toolhive-core v0.0.6
+	github.com/stacklok/toolhive-core v0.0.9
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/zap v1.27.1
 	golang.org/x/crypto v0.48.0
