@@ -249,6 +249,11 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 		infraws.CleanupStaleSnapshots(ws, logger)
 	}
 
+	// Clean up stale VM log directories from previous crashes.
+	if home, homeErr := os.UserHomeDir(); homeErr == nil {
+		infravm.CleanupStaleLogs(filepath.Join(home, ".config", "broodbox", "vms"), logger)
+	}
+
 	// Build registry with config-based custom agents.
 	registry := infraagent.NewRegistry()
 	cfgLoader := infraconfig.NewLoader(flags.cfgPath)
@@ -551,6 +556,11 @@ func openLogFile(override, vmName string) (string, *os.File, io.Closer, error) {
 		logDir := filepath.Join(home, ".config", "broodbox", "vms", vmName)
 		if err := os.MkdirAll(logDir, 0o700); err != nil {
 			return "", nil, nil, fmt.Errorf("creating log dir: %w", err)
+		}
+		// Write PID sentinel to mark ownership so stale cleanup can
+		// identify directories from dead processes.
+		if err := infravm.WriteSentinel(logDir); err != nil {
+			return "", nil, nil, err
 		}
 		logPath = filepath.Join(logDir, defaultLogFile)
 	}
