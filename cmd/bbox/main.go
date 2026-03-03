@@ -76,6 +76,7 @@ func rootCmd() *cobra.Command {
 		mcpConfig     string
 		noGitToken    bool
 		noGitSSHAgent bool
+		timings       bool
 	)
 
 	cmd := &cobra.Command{
@@ -127,6 +128,7 @@ Example:
 				mcpConfig:     mcpConfig,
 				noGitToken:    noGitToken,
 				noGitSSHAgent: noGitSSHAgent,
+				timings:       timings,
 				commandArgs:   commandArgs,
 			})
 		},
@@ -152,6 +154,7 @@ Example:
 	cmd.Flags().StringVar(&mcpConfig, "mcp-config", "", "Path to custom vmcp config YAML")
 	cmd.Flags().BoolVar(&noGitToken, "no-git-token", false, "Disable forwarding GITHUB_TOKEN/GH_TOKEN into the VM")
 	cmd.Flags().BoolVar(&noGitSSHAgent, "no-git-ssh-agent", false, "Disable SSH agent forwarding into the VM")
+	cmd.Flags().BoolVar(&timings, "timings", false, "Print per-phase timing summary after run")
 
 	// Add list subcommand.
 	cmd.AddCommand(listCmd())
@@ -193,6 +196,7 @@ type runFlags struct {
 	mcpConfig     string
 	noGitToken    bool
 	noGitSSHAgent bool
+	timings       bool
 	commandArgs   []string
 }
 
@@ -240,6 +244,16 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 	// Set up progress observer based on mode.
 	terminal := infraterminal.NewOSTerminal(os.Stdin, os.Stdout, os.Stderr)
 	observer := chooseObserver(terminal)
+
+	// Wrap with timing observer when --timings is set.
+	// The defer is registered here — before the cleanup defer below — so LIFO
+	// ordering ensures the summary prints after the cleanup phase completes.
+	var timingObs *infraprogress.TimingObserver
+	if flags.timings {
+		timingObs = infraprogress.NewTimingObserver(observer)
+		observer = timingObs
+		defer timingObs.Summary(os.Stderr)
+	}
 
 	// Use the workspace resolved above for VM naming.
 	ws := earlyWs
@@ -526,6 +540,10 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 		// Propagate the agent's exit code without printing an error.
 		var exitErr *infrassh.ExitError
 		if errors.As(err, &exitErr) {
+			// os.Exit bypasses defers, so flush the timing summary now.
+			if timingObs != nil {
+				timingObs.Summary(os.Stderr)
+			}
 			os.Exit(exitErr.Code)
 		}
 		// Print available agents on not-found errors.
