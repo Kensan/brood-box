@@ -14,7 +14,7 @@ permissions:
 
 env:
   GOPRIVATE: github.com/stacklok/*
-  GH_TOKEN: ${{ github.token }}
+  GH_TOKEN: ${{ secrets.GO_MODULE_TOKEN || github.token }}
 
 jobs:
   test:
