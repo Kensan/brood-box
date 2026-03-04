@@ -9,9 +9,4 @@ libkrunfw is licensed under the **GNU General Public License v2.0 (GPL-2.0)**.
 
 libkrunfw is distributed as a separate shared library (`libkrunfw.so.5` on
 Linux, `libkrunfw.dylib` on macOS) that is loaded at runtime by the
-`propolis-runner` subprocess. It is not statically linked into any binary
-in this project.
-
-When distributed in binary form (embedded in the bbox binary), the
-corresponding GPL-2.0 source code is available from the upstream repository
-at the URL above.
+`propolis-runner` subprocess. It is not embedded into the bbox binary.

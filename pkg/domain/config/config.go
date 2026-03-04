@@ -32,6 +32,9 @@ type Config struct {
 	// Git configures git identity and auth forwarding.
 	Git GitConfig `yaml:"git"`
 
+	// Runtime configures host runtime dependencies.
+	Runtime RuntimeConfig `yaml:"runtime"`
+
 	// Agents maps agent names to configuration overrides.
 	Agents map[string]AgentOverride `yaml:"agents"`
 }
@@ -46,6 +49,13 @@ type GitConfig struct {
 	// ForwardSSHAgent controls whether SSH agent forwarding is enabled.
 	// nil = default true.
 	ForwardSSHAgent *bool `yaml:"forward_ssh_agent,omitempty"`
+}
+
+// RuntimeConfig configures host runtime dependency handling.
+type RuntimeConfig struct {
+	// FirmwareDownload controls whether libkrunfw is downloaded at runtime.
+	// nil = default true.
+	FirmwareDownload *bool `yaml:"firmware_download,omitempty"`
 }
 
 // GitTokenEnabled returns whether git token forwarding is enabled.
@@ -238,6 +248,9 @@ func MergeConfigs(global, local *Config) *Config {
 	// Git: local can only tighten (disable), not enable if globally disabled.
 	result.Git = mergeGitConfig(global.Git, local.Git)
 
+	// Runtime: local overrides global when explicitly set.
+	result.Runtime = mergeRuntimeConfig(global.Runtime, local.Runtime)
+
 	// Agents: local extends/overrides global per key.
 	if len(local.Agents) > 0 {
 		if result.Agents == nil {
@@ -332,6 +345,16 @@ func mergeGitConfig(global, local GitConfig) GitConfig {
 	}
 
 	return result
+}
+
+func mergeRuntimeConfig(global, local RuntimeConfig) RuntimeConfig {
+	if global.FirmwareDownload != nil && !*global.FirmwareDownload {
+		return RuntimeConfig{FirmwareDownload: global.FirmwareDownload}
+	}
+	if local.FirmwareDownload != nil {
+		return RuntimeConfig{FirmwareDownload: local.FirmwareDownload}
+	}
+	return global
 }
 
 // ToEgressHosts converts config host entries to domain egress hosts.

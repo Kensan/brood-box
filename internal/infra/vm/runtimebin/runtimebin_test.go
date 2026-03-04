@@ -18,12 +18,6 @@ func TestRuntimeSource_Stub(t *testing.T) {
 	}
 }
 
-func TestFirmwareSource_Stub(t *testing.T) {
-	if src := FirmwareSource(); src != nil {
-		t.Error("FirmwareSource() = non-nil, want nil in stub build")
-	}
-}
-
 func TestVersion_Default(t *testing.T) {
 	if Version != "dev" {
 		t.Errorf("Version = %q, want %q", Version, "dev")

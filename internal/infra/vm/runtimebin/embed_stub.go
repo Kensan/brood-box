@@ -6,9 +6,8 @@
 package runtimebin
 
 var (
-	runner    []byte
-	libkrun   []byte
-	libkrunfw []byte
+	runner  []byte
+	libkrun []byte
 )
 
 const available = false

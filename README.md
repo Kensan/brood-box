@@ -50,12 +50,16 @@ VM. When the agent exits, you review the diff and accept or reject each file.
 ### Build
 
 ```bash
-task build-dev
+task build
 ```
 
 This downloads pre-built propolis runtime artifacts and embeds them into a
 self-contained `bbox` binary (pure Go, no CGO). No system `libkrun-devel`
 needed. The binary lands in `bin/`.
+
+The firmware (`libkrunfw`) is not embedded. It is downloaded at runtime and
+cached under `~/.cache/broodbox/firmware/`, with a system fallback if the
+download is unavailable.
 
 ### Run
 
@@ -101,6 +105,9 @@ bbox claude-code --allow-host "internal-api.example.com:443"
 # Disable MCP proxy
 bbox claude-code --no-mcp
 
+# Disable firmware download (use system libkrunfw only)
+bbox claude-code --no-firmware-download
+
 # Use a specific ToolHive group for MCP servers
 bbox claude-code --mcp-group "coding-tools"
 
@@ -139,6 +146,9 @@ mcp:
 git:
   forward_token: true
   forward_ssh_agent: true
+
+runtime:
+  firmware_download: true
 
 agents:
   claude-code:
@@ -288,9 +298,6 @@ Brood Box's isolation is built on several layers:
 
 ```bash
 # Build self-contained bbox (downloads + embeds propolis runtime)
-task build-dev
-
-# Build bbox only (pure Go, no CGO, needs propolis-runner on PATH)
 task build
 
 # Build bbox + propolis-runner from system libkrun (requires libkrun-devel)

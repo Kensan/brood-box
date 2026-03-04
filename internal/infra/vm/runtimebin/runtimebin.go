@@ -22,13 +22,3 @@ func RuntimeSource() extract.Source {
 	}
 	return extract.RuntimeBundle(Version, runner, libkrun)
 }
-
-// FirmwareSource returns an extract.Source that provides libkrunfw.
-// Returns nil when the runtime is not embedded (stub build).
-// The major version 5 matches the libkrunfw soname on Linux (libkrunfw.so.5).
-func FirmwareSource() extract.Source {
-	if !available {
-		return nil
-	}
-	return extract.FirmwareBundle(Version, 5, libkrunfw)
-}

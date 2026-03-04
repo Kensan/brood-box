@@ -13,9 +13,13 @@ vars:
   PROPOLIS_VERSION:
     sh: go list -m github.com/stacklok/propolis | awk '{print $2}'
   HOST_ARCH:
-    sh: uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/'
+    sh: uname -m
+  HOST_ARCH_ALT:
+    sh: uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/;s/arm64/aarch64/'
   HOST_OS:
     sh: uname -s | tr '[:upper:]' '[:lower:]'
+  HOST_OS_ALT:
+    sh: uname -s | tr '[:upper:]' '[:lower:]' | sed 's/darwin/macos/'
   LDFLAGS: >-
     -X github.com/stacklok/brood-box/internal/version.Version={{.VERSION}}
     -X github.com/stacklok/brood-box/internal/version.Commit={{.COMMIT}}
@@ -58,13 +62,13 @@ tasks:
       - internal/infra/vm/initbin/bbox-init
 
   build:
-    desc: Build bbox binary (pure Go, no CGO)
-    deps: [build-init]
+    desc: Build self-contained bbox with embedded propolis runtime
+    deps: [build-init, fetch-runtime]
     env:
       CGO_ENABLED: "0"
     cmds:
       - mkdir -p bin
-      - go build -ldflags "{{.LDFLAGS}}" -o bin/{{.BINARY_NAME}} ./cmd/bbox
+      - go build -tags embed_runtime -ldflags "{{.LDFLAGS_EMBED}}" -o bin/{{.BINARY_NAME}} ./cmd/bbox
     sources:
       - ./**/*.go
       - go.mod
@@ -73,24 +77,16 @@ tasks:
       - bin/{{.BINARY_NAME}}
 
   build-dev:
-    desc: Build self-contained bbox with embedded propolis runtime
+    desc: Build self-contained bbox with embedded propolis runtime (alias)
     platforms: [linux]
-    deps: [build-init, fetch-runtime, fetch-firmware]
-    env:
-      CGO_ENABLED: "0"
     cmds:
-      - mkdir -p bin
-      - go build -tags embed_runtime -ldflags "{{.LDFLAGS_EMBED}}" -o bin/{{.BINARY_NAME}} ./cmd/bbox
+      - task: build
 
   build-dev-darwin:
-    desc: Build self-contained bbox with embedded propolis runtime (macOS)
+    desc: Build self-contained bbox with embedded propolis runtime (alias)
     platforms: [darwin]
-    deps: [build-init, fetch-runtime, fetch-firmware]
-    env:
-      CGO_ENABLED: "0"
     cmds:
-      - mkdir -p bin
-      - go build -tags embed_runtime -ldflags "{{.LDFLAGS_EMBED}}" -o bin/{{.BINARY_NAME}} ./cmd/bbox
+      - task: build
 
   build-dev-system:
     desc: Build bbox + propolis-runner from system libkrun (requires libkrun-devel)
@@ -114,32 +110,52 @@ tasks:
     status:
       - test -f internal/infra/vm/runtimebin/propolis-runner
     cmds:
-      - mkdir -p internal/infra/vm/runtimebin
-      - >-
-        gh release download {{.PROPOLIS_VERSION}}
-        --repo stacklok/propolis
-        --pattern "propolis-runtime-{{.HOST_OS}}-{{.HOST_ARCH}}.tar.gz"
-        --dir internal/infra/vm/runtimebin/ --clobber
-      - >-
-        tar -xzf internal/infra/vm/runtimebin/propolis-runtime-{{.HOST_OS}}-{{.HOST_ARCH}}.tar.gz
-        -C internal/infra/vm/runtimebin/ --strip-components=1
-      - rm -f internal/infra/vm/runtimebin/propolis-runtime-{{.HOST_OS}}-{{.HOST_ARCH}}.tar.gz
+      - |
+        mkdir -p internal/infra/vm/runtimebin
+        gh release download {{.PROPOLIS_VERSION}} --repo stacklok/propolis --dir internal/infra/vm/runtimebin/ --clobber
+        archive=""
+        for os in "{{.HOST_OS}}" "{{.HOST_OS_ALT}}"; do
+          for arch in "{{.HOST_ARCH}}" "{{.HOST_ARCH_ALT}}"; do
+            candidate="internal/infra/vm/runtimebin/propolis-runtime-${os}-${arch}.tar.gz"
+            if [ -f "$candidate" ]; then
+              archive="$candidate"
+              break 2
+            fi
+          done
+        done
+        if [ -z "$archive" ]; then
+          echo "no runtime archive found in internal/infra/vm/runtimebin"
+          ls -1 internal/infra/vm/runtimebin/propolis-runtime-*.tar.gz || true
+          exit 1
+        fi
+        tar -xzf "$archive" -C internal/infra/vm/runtimebin/ --strip-components=1
+        rm -f internal/infra/vm/runtimebin/propolis-runtime-*.tar.gz
 
   fetch-firmware:
     desc: Download pre-built propolis firmware from GitHub Release
     status:
       - test -f internal/infra/vm/runtimebin/libkrunfw.*
     cmds:
-      - mkdir -p internal/infra/vm/runtimebin
-      - >-
-        gh release download {{.PROPOLIS_VERSION}}
-        --repo stacklok/propolis
-        --pattern "propolis-firmware-{{.HOST_OS}}-{{.HOST_ARCH}}.tar.gz"
-        --dir internal/infra/vm/runtimebin/ --clobber
-      - >-
-        tar -xzf internal/infra/vm/runtimebin/propolis-firmware-{{.HOST_OS}}-{{.HOST_ARCH}}.tar.gz
-        -C internal/infra/vm/runtimebin/ --strip-components=1
-      - rm -f internal/infra/vm/runtimebin/propolis-firmware-{{.HOST_OS}}-{{.HOST_ARCH}}.tar.gz
+      - |
+        mkdir -p internal/infra/vm/runtimebin
+        gh release download {{.PROPOLIS_VERSION}} --repo stacklok/propolis --dir internal/infra/vm/runtimebin/ --clobber
+        archive=""
+        for os in "{{.HOST_OS}}" "{{.HOST_OS_ALT}}"; do
+          for arch in "{{.HOST_ARCH}}" "{{.HOST_ARCH_ALT}}"; do
+            candidate="internal/infra/vm/runtimebin/propolis-firmware-${os}-${arch}.tar.gz"
+            if [ -f "$candidate" ]; then
+              archive="$candidate"
+              break 2
+            fi
+          done
+        done
+        if [ -z "$archive" ]; then
+          echo "no firmware archive found in internal/infra/vm/runtimebin"
+          ls -1 internal/infra/vm/runtimebin/propolis-firmware-*.tar.gz || true
+          exit 1
+        fi
+        tar -xzf "$archive" -C internal/infra/vm/runtimebin/ --strip-components=1
+        rm -f internal/infra/vm/runtimebin/propolis-firmware-*.tar.gz
 
   test:
     desc: Run unit tests

@@ -301,6 +301,11 @@ func vmDataDir(name string) (string, error) {
 	return filepath.Join(home, ".config", "broodbox", "vms", name, "data"), nil
 }
 
+// VMDataDir returns a per-VM data directory under ~/.config/broodbox/vms/<name>/data.
+func VMDataDir(name string) (string, error) {
+	return vmDataDir(name)
+}
+
 // pickFreePort asks the kernel for a free TCP port by binding to :0, reading
 // the assigned port, then closing the listener. There is a small TOCTOU window
 // between closing the listener and propolis binding the same port, but in

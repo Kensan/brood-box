@@ -22,20 +22,25 @@ This installs the shared libraries that propolis-runner links against via CGO.
 
 ## Building
 
-### Pure Go binary (bbox only)
+### Default build (embedded runtime)
 
-The `bbox` binary itself is pure Go (`CGO_ENABLED=0`) and compiles on any platform:
+The default build embeds the propolis runtime into `bbox`:
 
 ```bash
 task build
 ```
 
-This works identically on Linux and macOS.
+This downloads the pinned runtime artifacts via `gh` and produces a self-contained
+`bin/bbox` (pure Go, no CGO) that does not depend on Homebrew `libkrun`.
 
-### Full development build (bbox + propolis-runner)
+Firmware (`libkrunfw`) is not embedded. It is downloaded at runtime and cached
+under `~/.cache/broodbox/firmware/`, with a system fallback if the download is
+unavailable.
+
+### System build (bbox + propolis-runner)
 
 ```bash
-task build-dev-darwin
+task build-dev-system-darwin
 ```
 
 This:
@@ -51,14 +56,15 @@ The resulting binaries are in `bin/`.
 bin/bbox claude-code --workspace /path/to/project
 ```
 
-Propolis auto-discovers `propolis-runner` next to the `bbox` binary (both in `bin/`).
+Propolis auto-discovers `propolis-runner` next to the `bbox` binary (both in `bin/`)
+when using the system build.
 
 ## Platform Differences
 
 | Feature | Linux | macOS |
 |---------|-------|-------|
 | Hypervisor | KVM (libkrun) | Hypervisor.framework (libkrun) |
-| Build task | `task build-dev` | `task build-dev-darwin` |
+| Build task | `task build` | `task build` |
 | libkrun install | `libkrun-devel` (system package) | `brew install libkrun` |
 | Code signing | Not required | Required (entitlements.plist) |
 | Library path | `LD_LIBRARY_PATH` | `DYLD_LIBRARY_PATH` |
@@ -76,7 +82,7 @@ likely lacks Hypervisor.framework entitlements:
 codesign --entitlements assets/entitlements.plist --force -s - bin/propolis-runner
 ```
 
-The `task build-dev-darwin` command does this automatically.
+The `task build-dev-system-darwin` command does this automatically.
 
 ### Hypervisor.framework not available
 
@@ -91,7 +97,7 @@ If this returns 0, your hardware does not support Hypervisor.framework.
 
 ### Library not found errors
 
-If propolis-runner fails to find libkrun at runtime, ensure Homebrew libraries are
+If propolis-runner fails to find libkrunfw at runtime, ensure Homebrew libraries are
 on the dynamic linker path:
 
 ```bash
