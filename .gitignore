@@ -9,6 +9,8 @@ internal/infra/vm/runtimebin/libkrun.dylib
 internal/infra/vm/runtimebin/libkrunfw.dylib
 internal/infra/vm/runtimebin/VERSION
 internal/infra/vm/runtimebin/LICENSE-GPL
+internal/infra/vm/runtimebin/propolis-firmware-*.tar.gz
+internal/infra/vm/runtimebin/sha256sums.txt
 
 # Test coverage
 coverage.out
