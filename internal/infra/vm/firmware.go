@@ -129,8 +129,6 @@ func WriteFirmwareReference(path string, ref FirmwareReference) error {
 }
 
 func downloadFirmware(ctx context.Context, cacheRoot, version, osName, arch string) (FirmwareResolution, error) {
-	url := firmwareURL(version, osName, arch)
-	checksumURL := url + ".sha256"
 	cacheDir := filepath.Join(cacheRoot, version, fmt.Sprintf("%s-%s", osName, arch))
 	manifestPath := filepath.Join(cacheDir, "firmware.json")
 
@@ -156,78 +154,113 @@ func downloadFirmware(ctx context.Context, cacheRoot, version, osName, arch stri
 		return FirmwareResolution{}, fmt.Errorf("clear firmware cache: %w", err)
 	}
 
-	tmpArchive, err := os.CreateTemp(cacheRoot, "firmware-*.tar.gz")
-	if err != nil {
-		return FirmwareResolution{}, fmt.Errorf("create firmware temp archive: %w", err)
-	}
-	tmpArchivePath := tmpArchive.Name()
-	defer func() {
-		_ = tmpArchive.Close()
-		_ = os.Remove(tmpArchivePath)
-	}()
+	archCandidates := firmwareArchCandidates(arch)
+	var lastErr error
+	for _, candidate := range archCandidates {
+		url := firmwareURL(version, osName, candidate)
+		checksumURL := url + ".sha256"
 
-	checksum, err := downloadChecksum(ctx, checksumURL)
-	if err != nil {
-		return FirmwareResolution{}, err
-	}
-	archiveHash, err := downloadToFile(ctx, url, tmpArchive, maxFirmwareArchiveSize)
-	if err != nil {
-		return FirmwareResolution{}, err
-	}
-	if !strings.EqualFold(archiveHash, checksum) {
-		return FirmwareResolution{}, fmt.Errorf("firmware checksum mismatch: expected %s got %s", checksum, archiveHash)
-	}
-	if err := tmpArchive.Close(); err != nil {
-		return FirmwareResolution{}, fmt.Errorf("close firmware archive: %w", err)
+		tmpArchive, err := os.CreateTemp(cacheRoot, "firmware-*.tar.gz")
+		if err != nil {
+			return FirmwareResolution{}, fmt.Errorf("create firmware temp archive: %w", err)
+		}
+		tmpArchivePath := tmpArchive.Name()
+		cleanupArchive := func() {
+			_ = tmpArchive.Close()
+			_ = os.Remove(tmpArchivePath)
+		}
+
+		checksum, err := downloadChecksum(ctx, checksumURL)
+		if err != nil {
+			cleanupArchive()
+			lastErr = err
+			continue
+		}
+		archiveHash, err := downloadToFile(ctx, url, tmpArchive, maxFirmwareArchiveSize)
+		if err != nil {
+			cleanupArchive()
+			lastErr = err
+			continue
+		}
+		if !strings.EqualFold(archiveHash, checksum) {
+			cleanupArchive()
+			lastErr = fmt.Errorf("firmware checksum mismatch: expected %s got %s", checksum, archiveHash)
+			continue
+		}
+		if err := tmpArchive.Close(); err != nil {
+			cleanupArchive()
+			lastErr = fmt.Errorf("close firmware archive: %w", err)
+			continue
+		}
+
+		tmpDir, err := os.MkdirTemp(cacheRoot, "firmware-extract-")
+		if err != nil {
+			cleanupArchive()
+			return FirmwareResolution{}, fmt.Errorf("create firmware temp dir: %w", err)
+		}
+		cleanupDir := func() { _ = os.RemoveAll(tmpDir) }
+
+		if err := extractTarGz(tmpArchivePath, tmpDir, maxFirmwareExtractSize); err != nil {
+			cleanupDir()
+			cleanupArchive()
+			lastErr = fmt.Errorf("extract firmware archive: %w", err)
+			continue
+		}
+		fwPath, err := findFirmwareFile(tmpDir, osName)
+		if err != nil {
+			cleanupDir()
+			cleanupArchive()
+			lastErr = errors.New("firmware archive missing libkrunfw")
+			continue
+		}
+		fwHash, err := hashFile(fwPath)
+		if err != nil {
+			cleanupDir()
+			cleanupArchive()
+			lastErr = fmt.Errorf("hash firmware library: %w", err)
+			continue
+		}
+
+		if err := os.MkdirAll(filepath.Dir(cacheDir), 0o700); err != nil {
+			cleanupDir()
+			cleanupArchive()
+			return FirmwareResolution{}, fmt.Errorf("create firmware parent: %w", err)
+		}
+		if err := os.Rename(tmpDir, cacheDir); err != nil {
+			cleanupDir()
+			cleanupArchive()
+			lastErr = fmt.Errorf("finalize firmware cache: %w", err)
+			continue
+		}
+
+		manifest := FirmwareManifest{
+			Version:     version,
+			OS:          osName,
+			Arch:        arch,
+			Source:      firmwareSourceDownload,
+			URL:         url,
+			LibraryHash: fwHash,
+			Timestamp:   time.Now().UTC(),
+		}
+		if err := writeFirmwareManifest(manifestPath, manifest); err != nil {
+			return FirmwareResolution{}, err
+		}
+
+		return FirmwareResolution{
+			Dir:       cacheDir,
+			Version:   version,
+			OS:        osName,
+			Arch:      arch,
+			Source:    firmwareSourceDownload,
+			URL:       url,
+			Timestamp: manifest.Timestamp,
+		}, nil
 	}
 
-	tmpDir, err := os.MkdirTemp(cacheRoot, "firmware-extract-")
-	if err != nil {
-		return FirmwareResolution{}, fmt.Errorf("create firmware temp dir: %w", err)
+	if lastErr == nil {
+		lastErr = errors.New("firmware download failed")
 	}
-	defer func() { _ = os.RemoveAll(tmpDir) }()
-
-	if err := extractTarGz(tmpArchivePath, tmpDir, maxFirmwareExtractSize); err != nil {
-		return FirmwareResolution{}, fmt.Errorf("extract firmware archive: %w", err)
-	}
-	fwPath, err := findFirmwareFile(tmpDir, osName)
-	if err != nil {
-		return FirmwareResolution{}, errors.New("firmware archive missing libkrunfw")
-	}
-	fwHash, err := hashFile(fwPath)
-	if err != nil {
-		return FirmwareResolution{}, fmt.Errorf("hash firmware library: %w", err)
-	}
-
-	if err := os.MkdirAll(filepath.Dir(cacheDir), 0o700); err != nil {
-		return FirmwareResolution{}, fmt.Errorf("create firmware parent: %w", err)
-	}
-	if err := os.Rename(tmpDir, cacheDir); err != nil {
-		return FirmwareResolution{}, fmt.Errorf("finalize firmware cache: %w", err)
-	}
-
-	manifest := FirmwareManifest{
-		Version:     version,
-		OS:          osName,
-		Arch:        arch,
-		Source:      firmwareSourceDownload,
-		URL:         url,
-		LibraryHash: fwHash,
-		Timestamp:   time.Now().UTC(),
-	}
-	if err := writeFirmwareManifest(manifestPath, manifest); err != nil {
-		return FirmwareResolution{}, err
-	}
-
-	return FirmwareResolution{
-		Dir:       cacheDir,
-		Version:   version,
-		OS:        osName,
-		Arch:      arch,
-		Source:    firmwareSourceDownload,
-		URL:       url,
-		Timestamp: manifest.Timestamp,
-	}, nil
+	return FirmwareResolution{}, lastErr
 }
 
 func findSystemFirmware(version, osName, arch string) (FirmwareResolution, error) {
@@ -481,6 +514,21 @@ func firmwareLibNames(osName string) []string {
 		return []string{"libkrunfw.dylib"}
 	}
 	return []string{"libkrunfw.so.5"}
+}
+
+func firmwareArchCandidates(arch string) []string {
+	switch arch {
+	case "amd64":
+		return []string{"amd64", "x86_64"}
+	case "arm64":
+		return []string{"arm64", "aarch64"}
+	case "x86_64":
+		return []string{"x86_64", "amd64"}
+	case "aarch64":
+		return []string{"aarch64", "arm64"}
+	default:
+		return []string{arch}
+	}
 }
 
 func downloadChecksum(ctx context.Context, url string) (string, error) {
