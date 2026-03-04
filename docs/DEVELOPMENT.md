@@ -170,7 +170,7 @@ Before submitting changes:
 task fmt          # Format code
 task lint         # Check for issues
 task test         # Run tests with race detector
-    task build        # Verify compilation
+task build        # Verify compilation
 ```
 
 Or run them all at once:
