@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 
@@ -140,6 +141,7 @@ func (r *PropolisRunner) Start(ctx context.Context, cfg domvm.VMConfig) (domvm.V
 	opts := []propolis.Option{
 		propolis.WithName(cfg.Name),
 		propolis.WithDataDir(dataDir),
+		propolis.WithPreflightChecker(buildPreflightChecker(dataDir)),
 		propolis.WithCleanDataDir(),
 		propolis.WithCPUs(cfg.CPUs),
 		propolis.WithMemory(cfg.Memory),
@@ -153,11 +155,20 @@ func (r *PropolisRunner) Start(ctx context.Context, cfg domvm.VMConfig) (domvm.V
 		),
 		propolis.WithInitOverride("/bbox-init"),
 		propolis.WithPostBoot(func(ctx context.Context, _ *propolis.VM) error {
-			r.logger.Info("waiting for SSH", "port", sshPort)
+			r.logger.Debug("waiting for SSH", "port", sshPort)
 			client := propolisssh.NewClient("127.0.0.1", sshPort, "sandbox", privKeyPath,
 				propolisssh.WithHostKey(hostPubKey),
 			)
-			return client.WaitForReady(ctx)
+			start := time.Now()
+			if err := client.WaitForReady(ctx); err != nil {
+				r.logger.Warn("SSH readiness check failed",
+					"elapsed", time.Since(start),
+					"error", err,
+				)
+				return err
+			}
+			r.logger.Debug("SSH ready", "elapsed", time.Since(start))
+			return nil
 		}),
 	}
 
@@ -236,12 +247,14 @@ func (r *PropolisRunner) Start(ctx context.Context, cfg domvm.VMConfig) (domvm.V
 	}
 
 	// Run propolis.
+	start := time.Now()
 	pvm, err := propolis.Run(ctx, cfg.Image, opts...)
 	if err != nil {
 		// Clean up SSH keys on failure.
 		_ = os.RemoveAll(keyDir)
 		return nil, fmt.Errorf("starting VM: %w", err)
 	}
+	r.logger.Debug("sandbox VM started", "elapsed", time.Since(start))
 
 	return &propolisVM{
 		vm:         pvm,
