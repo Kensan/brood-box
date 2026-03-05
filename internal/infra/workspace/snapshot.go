@@ -24,9 +24,9 @@ var _ domws.WorkspaceCloner = (*FSWorkspaceCloner)(nil)
 // snapshotDirPrefix is the prefix for snapshot temporary directories.
 const snapshotDirPrefix = ".sandbox-snapshot-"
 
-// snapshotSentinel is a marker file placed inside snapshot directories
+// snapshotSentinelSuffix is a marker file placed alongside snapshot directories
 // to identify them as sandbox snapshots (vs unrelated directories).
-const snapshotSentinel = ".sandbox-snapshot-sentinel"
+const snapshotSentinelSuffix = ".sentinel"
 
 // FSWorkspaceCloner creates file-system-based workspace snapshots.
 type FSWorkspaceCloner struct {
@@ -123,7 +123,7 @@ func (c *FSWorkspaceCloner) CreateSnapshot(ctx context.Context, workspacePath st
 	// Write sentinel file with our PID to identify this as an active snapshot.
 	// The PID allows stale cleanup to distinguish dead-process snapshots from
 	// a concurrently running instance's active snapshot.
-	sentinelPath := filepath.Join(tmpDir, snapshotSentinel)
+	sentinelPath := tmpDir + snapshotSentinelSuffix
 	sentinelContent := fmt.Sprintf("%d", os.Getpid())
 	if err := os.WriteFile(sentinelPath, []byte(sentinelContent), 0o600); err != nil {
 		return nil, fmt.Errorf("writing snapshot sentinel: %w", err)
@@ -135,6 +135,9 @@ func (c *FSWorkspaceCloner) CreateSnapshot(ctx context.Context, workspacePath st
 		OriginalPath: absWorkspace,
 		SnapshotPath: snapshotDir,
 		Cleanup: func() error {
+			if err := os.Remove(sentinelPath); err != nil && !os.IsNotExist(err) {
+				return err
+			}
 			return os.RemoveAll(snapshotDir)
 		},
 	}, nil
@@ -197,7 +200,7 @@ func CleanupStaleSnapshots(workspacePath string, logger *slog.Logger) {
 
 		// Only remove directories that have our sentinel file to avoid
 		// deleting unrelated directories.
-		sentinelPath := filepath.Join(stalePath, snapshotSentinel)
+		sentinelPath := stalePath + snapshotSentinelSuffix
 		data, err := os.ReadFile(sentinelPath)
 		if err != nil {
 			logger.Debug("skipping directory without sentinel", "path", stalePath)
@@ -217,6 +220,10 @@ func CleanupStaleSnapshots(workspacePath string, logger *slog.Logger) {
 		logger.Warn("removing stale snapshot directory", "path", stalePath)
 		if err := os.RemoveAll(stalePath); err != nil {
 			logger.Error("failed to remove stale snapshot", "path", stalePath, "error", err)
+			continue
+		}
+		if err := os.Remove(sentinelPath); err != nil && !os.IsNotExist(err) {
+			logger.Error("failed to remove snapshot sentinel", "path", sentinelPath, "error", err)
 		}
 	}
 }
