@@ -17,7 +17,7 @@ import (
 func TestReviewConfig_Defaults(t *testing.T) {
 	t.Parallel()
 
-	// Zero-value ReviewConfig means review is implicitly enabled (nil pointer).
+	// Zero-value ReviewConfig means review is implicitly disabled (nil pointer).
 	var cfg ReviewConfig
 	assert.Nil(t, cfg.Enabled)
 	assert.Empty(t, cfg.ExcludePatterns)

@@ -69,7 +69,7 @@ func rootCmd() *cobra.Command {
 		cfgPath       string
 		image         string
 		debug         bool
-		noReview      bool
+		review        bool
 		excludes      []string
 		logFile       string
 		egressProfile string
@@ -91,9 +91,9 @@ func rootCmd() *cobra.Command {
 		Long: `bbox boots a microVM, mounts your workspace, forwards secrets,
 and drops into an interactive terminal session with a coding agent.
 
-By default, the workspace is mounted as a COW snapshot. After the agent
-finishes, you review changes per-file before they touch the real workspace.
-Use --no-review to disable snapshot isolation and mount the workspace directly.
+By default, the workspace is mounted directly into the VM. Use --review to
+enable COW snapshot isolation: after the agent finishes, you review changes
+per-file before they touch the real workspace.
 
 Supported agents: claude-code, codex, opencode
 
@@ -101,8 +101,8 @@ Example:
   bbox claude-code
   bbox codex --cpus 4 --memory 4096
   bbox opencode --workspace /path/to/project
-  bbox claude-code --no-review
-  bbox claude-code --exclude "*.log" --exclude "tmp/"
+  bbox claude-code --review
+  bbox claude-code --review --exclude "*.log" --exclude "tmp/"
   bbox claude-code --egress-profile locked
   bbox claude-code --allow-host "custom-api.example.com:443"
   bbox claude-code --no-mcp
@@ -123,7 +123,7 @@ Example:
 				cfgPath:       cfgPath,
 				image:         image,
 				debug:         debug,
-				noReview:      noReview,
+				review:        review,
 				excludes:      excludes,
 				logFile:       logFile,
 				egressProfile: egressProfile,
@@ -151,7 +151,7 @@ Example:
 	cmd.Flags().StringVar(&cfgPath, "config", "", "Config file path (default: ~/.config/broodbox/config.yaml)")
 	cmd.Flags().StringVar(&image, "image", "", "Override OCI image reference")
 	cmd.Flags().BoolVar(&debug, "debug", false, "Enable debug-level logging to file (default: info level)")
-	cmd.Flags().BoolVar(&noReview, "no-review", false, "Disable workspace snapshot isolation (mount workspace directly)")
+	cmd.Flags().BoolVar(&review, "review", false, "Enable workspace snapshot isolation (COW snapshot with per-file review)")
 	cmd.Flags().StringSliceVar(&excludes, "exclude", nil, "Additional exclude patterns for workspace snapshot (repeatable)")
 	cmd.Flags().StringVar(&logFile, "log-file", "", "Override log file path (default: ~/.config/broodbox/vms/<vm-name>/broodbox.log)")
 	cmd.Flags().StringVar(&egressProfile, "egress-profile", "", "Egress restriction level: permissive, standard, locked (default: agent's built-in default)")
@@ -195,7 +195,7 @@ type runFlags struct {
 	cfgPath       string
 	image         string
 	debug         bool
-	noReview      bool
+	review        bool
 	excludes      []string
 	logFile       string
 	egressProfile string
@@ -271,7 +271,7 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 	ws := earlyWs
 
 	// Clean up stale snapshot dirs from previous crashes.
-	if !flags.noReview {
+	if flags.review {
 		infraws.CleanupStaleSnapshots(ws, logger)
 	}
 
@@ -331,11 +331,11 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 		}
 	}
 
-	// Determine review mode. Default is enabled unless --no-review is set
-	// or config explicitly disables it.
-	reviewEnabled := !flags.noReview
-	if reviewEnabled && cfg != nil && cfg.Review.Enabled != nil && !*cfg.Review.Enabled {
-		reviewEnabled = false
+	// Determine review mode. Default is disabled unless --review is set
+	// or config explicitly enables it.
+	reviewEnabled := flags.review
+	if !reviewEnabled && cfg != nil && cfg.Review.Enabled != nil && *cfg.Review.Enabled {
+		reviewEnabled = true
 	}
 
 	// Warn if review is disabled and git config contains credentials.
@@ -346,7 +346,7 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 		} else if hasCreds {
 			_, _ = fmt.Fprintf(os.Stderr, "\nSecurity: .git/config contains credentials that will be exposed inside the VM.\n")
 			_, _ = fmt.Fprintf(os.Stderr, "  Snapshot isolation is disabled, so git credential sanitization is skipped.\n")
-			_, _ = fmt.Fprintf(os.Stderr, "  Consider enabling review mode to enable credential sanitization.\n\n")
+			_, _ = fmt.Fprintf(os.Stderr, "  Consider using --review to enable credential sanitization.\n\n")
 		}
 	}
 
@@ -707,7 +707,7 @@ func warnLocalConfigOverrides(w io.Writer, localCfg, globalCfg *domainconfig.Con
 
 	// Review.Enabled — always ignored for security, warn if set.
 	if localCfg.Review.Enabled != nil {
-		warnings = append(warnings, "review.enabled is ignored for security — use --no-review or global config")
+		warnings = append(warnings, "review.enabled is ignored for security — use --review or global config")
 	}
 
 	// Review.ExcludePatterns — can hide changes from diff review.

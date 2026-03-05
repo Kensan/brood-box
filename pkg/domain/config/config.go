@@ -105,7 +105,7 @@ func (m MCPConfig) IsEnabled() bool {
 // ReviewConfig configures workspace snapshot isolation and review behavior.
 type ReviewConfig struct {
 	// Enabled controls whether snapshot isolation is active.
-	// When nil, defaults to true (enabled).
+	// When nil, defaults to false (disabled).
 	Enabled *bool `yaml:"enabled,omitempty"`
 
 	// ExcludePatterns are additional gitignore-style patterns to exclude

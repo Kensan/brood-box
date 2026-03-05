@@ -96,9 +96,9 @@ This project follows DDD layered architecture with dependency injection **strict
 
 ## Workspace Snapshot Isolation
 
-By default, the workspace is mounted as a COW snapshot. After the agent finishes, you review changes per-file before they touch the real workspace.
+By default, the workspace is mounted directly into the VM. Use `--review` to enable COW snapshot isolation: after the agent finishes, you review changes per-file before they touch the real workspace.
 
-- `--no-review` — Disable snapshot isolation, mount workspace directly
+- `--review` — Enable snapshot isolation with per-file review
 - `--exclude "pattern"` — Additional gitignore-style exclude patterns (repeatable)
 - `.broodboxignore` — Per-workspace exclude file (gitignore syntax) in workspace root
 - `.broodbox.yaml` — Per-workspace config file (merged into global config; `review.enabled` is **ignored** for security)
