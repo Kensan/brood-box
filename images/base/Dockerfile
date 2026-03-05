@@ -37,6 +37,16 @@ RUN ARCH="$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')" && \
     curl -fsSL "https://github.com/go-task/task/releases/download/${TASK_VERSION}/task_linux_${ARCH}.tar.gz" | \
     tar -xz -C /usr/local/bin task
 
+# Install golangci-lint from GitHub releases (not packaged in Wolfi).
+ARG GOLANGCI_LINT_VERSION=v2.10.1
+RUN ARCH="$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')" && \
+    VER="${GOLANGCI_LINT_VERSION#v}" && \
+    curl -fsSL "https://github.com/golangci/golangci-lint/releases/download/${GOLANGCI_LINT_VERSION}/golangci-lint-${VER}-linux-${ARCH}.tar.gz" | \
+    tar -xz --strip-components=1 -C /usr/local/bin "golangci-lint-${VER}-linux-${ARCH}/golangci-lint"
+
+# Install goimports via go install (no binary releases available).
+RUN GOBIN=/usr/local/bin go install golang.org/x/tools/cmd/goimports@latest
+
 # Create non-root sandbox user for SSH sessions
 RUN adduser -D -u 1000 -h /home/sandbox -s /bin/bash sandbox && \
     mkdir -p /home/sandbox/.ssh /home/sandbox/.local/bin && \
