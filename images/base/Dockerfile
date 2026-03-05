@@ -14,6 +14,7 @@ RUN apk add --no-cache \
     coreutils \
     findutils \
     grep \
+    ripgrep \
     sed \
     gawk \
     curl \
