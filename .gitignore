@@ -18,6 +18,7 @@ coverage.out
 coverage.html
 
 # IDE
+.claude/settings.local.json
 .idea/
 .vscode/
 *.swp
