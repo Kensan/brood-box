@@ -6,7 +6,7 @@ variable "REGISTRY" {
 }
 
 group "default" {
-  targets = ["claude-code", "codex", "opencode"]
+  targets = ["base", "claude-code", "codex", "opencode"]
 }
 
 target "base" {
