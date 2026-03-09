@@ -209,6 +209,14 @@ tasks:
       - task: lint
       - task: test
 
+  install:
+    desc: Install bbox to GOPATH/bin
+    deps: [build-init, fetch-runtime]
+    env:
+      CGO_ENABLED: "0"
+    cmds:
+      - go install -tags embed_runtime -ldflags "{{.LDFLAGS_EMBED}}" ./cmd/bbox
+
   run:
     desc: Build and run bbox
     cmds:

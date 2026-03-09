@@ -25,6 +25,7 @@ task lint-fix               # Auto-fix lint issues
 task fmt                    # go fmt + goimports
 task tidy                   # go mod tidy
 task verify                 # fmt + lint + test
+task install                # Install bbox to GOPATH/bin
 task run                    # Build and run
 task clean                  # Remove bin/ and coverage files
 task image-base             # Build base guest image
