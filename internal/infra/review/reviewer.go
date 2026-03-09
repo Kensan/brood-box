@@ -12,8 +12,8 @@ import (
 	"io"
 	"strings"
 
+	"charm.land/glamour/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/glamour"
 
 	"github.com/stacklok/brood-box/pkg/domain/snapshot"
 )
@@ -72,7 +72,7 @@ func renderDiff(renderer *glamour.TermRenderer, diff string) string {
 func (r *InteractiveReviewer) Review(changes []snapshot.FileChange) (snapshot.ReviewResult, error) {
 	var result snapshot.ReviewResult
 
-	renderer, err := glamour.NewTermRenderer(glamour.WithAutoStyle())
+	renderer, err := glamour.NewTermRenderer(glamour.WithWordWrap(80))
 	if err != nil {
 		// Fall back to non-styled rendering if glamour fails.
 		renderer = nil
