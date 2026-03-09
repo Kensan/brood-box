@@ -37,6 +37,9 @@ vars:
     -X github.com/stacklok/brood-box/internal/version.Commit={{.COMMIT}}
     -X github.com/stacklok/brood-box/internal/infra/vm/runtimebin.Version={{.PROPOLIS_VERSION}}
 
+env:
+  GOTOOLCHAIN: auto
+
 # Quick reference:
 #   task build           → Build bbox (pure Go, no CGO)
 #   task build-dev       → Build self-contained bbox with embedded propolis runtime
