@@ -87,6 +87,7 @@ func rootCmd() *cobra.Command {
 		noFirmwareDL      bool
 		noImageCache      bool
 		timings           bool
+		exec              string
 	)
 
 	cmd := &cobra.Command{
@@ -111,7 +112,8 @@ Example:
   bbox claude-code --allow-host "custom-api.example.com:443"
   bbox claude-code --no-mcp
   bbox claude-code --mcp-group "coding-tools"
-  bbox claude-code -- --help`,
+  bbox claude-code -- --help
+  bbox claude-code --exec /bin/bash`,
 		Args:    cobra.MinimumNArgs(1),
 		Version: fmt.Sprintf("%s (%s)", version.Version, version.Commit),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -142,6 +144,7 @@ Example:
 				noFirmwareDL:      noFirmwareDL,
 				noImageCache:      noImageCache,
 				timings:           timings,
+				exec:              exec,
 				commandArgs:       commandArgs,
 			})
 		},
@@ -171,6 +174,7 @@ Example:
 	cmd.Flags().BoolVar(&noFirmwareDL, "no-firmware-download", false, "Disable firmware download (use system libkrunfw only)")
 	cmd.Flags().BoolVar(&noImageCache, "no-image-cache", false, "Disable OCI image caching (fresh pull every run)")
 	cmd.Flags().BoolVar(&timings, "timings", false, "Print per-phase timing summary after run")
+	cmd.Flags().StringVar(&exec, "exec", "", "Override the agent command (e.g. /bin/bash for debugging)")
 
 	// Add subcommands.
 	cmd.AddCommand(listCmd())
@@ -281,6 +285,7 @@ type runFlags struct {
 	noFirmwareDL      bool
 	noImageCache      bool
 	timings           bool
+	exec              string
 	commandArgs       []string
 }
 
@@ -644,6 +649,11 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 
 	runner := sandbox.NewSandboxRunner(deps)
 
+	var commandOverride []string
+	if flags.exec != "" {
+		commandOverride = []string{flags.exec}
+	}
+
 	opts := sandbox.RunOpts{
 		CPUs:            flags.cpus,
 		Memory:          flags.memory,
@@ -655,6 +665,7 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 		GitTokenEnabled: gitTokenEnabled,
 		SSHAgentForward: sshAgentEnabled,
 		SessionID:       sessionID,
+		CommandOverride: commandOverride,
 		CommandArgs:     flags.commandArgs,
 		Snapshot: sandbox.SnapshotOpts{
 			Enabled:         reviewEnabled,
