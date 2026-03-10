@@ -1,0 +1,97 @@
+# SPDX-FileCopyrightText: Copyright 2025 Stacklok, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  GOPRIVATE: github.com/stacklok/*
+  GH_TOKEN: ${{ secrets.GO_MODULE_TOKEN || github.token }}
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }}-${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - os: linux
+            arch: amd64
+            runner: ubuntu-latest
+          - os: linux
+            arch: arm64
+            runner: ubuntu-24.04-arm
+          - os: darwin
+            arch: arm64
+            runner: macos-15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Configure Git for private modules
+        run: |
+          git config --global url."https://${{ github.actor }}:${{ secrets.GO_MODULE_TOKEN }}@github.com/".insteadOf "https://github.com/"
+
+      - name: Install Task
+        uses: go-task/setup-task@v1
+
+      - name: Build bbox
+        run: task build
+
+      - name: Verify version
+        run: |
+          echo "Binary reports: $(./bin/bbox --version)"
+          echo "Expected tag: ${{ github.ref_name }}"
+
+      - name: Package binary
+        run: |
+          mkdir -p dist
+          tar -czf dist/bbox-${{ matrix.os }}-${{ matrix.arch }}.tar.gz -C bin bbox
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bbox-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/bbox-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
+
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [build]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: sha256sum bbox-*.tar.gz > sha256sums.txt
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "${{ github.ref_name }}" >/dev/null 2>&1; then
+            gh release upload "${{ github.ref_name }}" --clobber \
+              bbox-*.tar.gz sha256sums.txt
+          else
+            gh release create "${{ github.ref_name }}" --generate-notes \
+              bbox-*.tar.gz sha256sums.txt
+          fi

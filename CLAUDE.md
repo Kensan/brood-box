@@ -117,6 +117,22 @@ review:
 
 Execution order: create snapshot → start VM → terminal → stop VM → diff → review → flush → cleanup.
 
+## CI/CD
+
+Three GitHub Actions workflows:
+
+- **CI** (`.github/workflows/ci.yaml`) — Runs on pushes to `main` and PRs. Jobs: test, lint, build (matrix: ubuntu + macOS). Also validates image builds (build-only, no push).
+- **Images** (`.github/workflows/images.yaml`) — Dedicated image build and push. Triggers: weekly schedule (Monday 06:00 UTC), manual dispatch, and pushes to `main` that touch `images/**`. Pushes all guest images (base, claude-code, codex, opencode) as `:latest` to GHCR.
+- **Release** (`.github/workflows/release.yaml`) — Triggered by `v*` tag pushes. Builds `bbox` binaries natively on linux/amd64, linux/arm64, and darwin/arm64 using `task build` (embeds bbox-init + propolis runtime). Packages tarballs, generates SHA-256 checksums, and creates a GitHub Release with auto-generated notes.
+
+To cut a release:
+```bash
+git tag v0.0.X
+git push origin v0.0.X
+```
+
+Image tagging is `:latest` only — images are not versioned with release tags. They are rebuilt weekly and on any change to `images/`.
+
 ## Things That Will Bite You
 
 - **propolis is a tagged dependency**: `go.mod` depends on `github.com/stacklok/propolis` as a versioned module. `build` downloads pre-built propolis runtime artifacts and embeds them — no local checkout or system libkrun needed. Use `build-dev-system` to build propolis-runner from source (requires `libkrun-devel`).
