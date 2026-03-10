@@ -23,8 +23,11 @@ target "claude-code" {
   tags       = ["${REGISTRY}/claude-code:latest"]
   cache-from = ["type=gha,scope=claude-code"]
   cache-to   = ["type=gha,mode=max,scope=claude-code"]
+  args = {
+    BASE_IMAGE = "brood-box-base"
+  }
   contexts = {
-    "ghcr.io/stacklok/brood-box/base:latest" = "target:base"
+    "brood-box-base" = "target:base"
   }
 }
 
@@ -34,8 +37,11 @@ target "codex" {
   tags       = ["${REGISTRY}/codex:latest"]
   cache-from = ["type=gha,scope=codex"]
   cache-to   = ["type=gha,mode=max,scope=codex"]
+  args = {
+    BASE_IMAGE = "brood-box-base"
+  }
   contexts = {
-    "ghcr.io/stacklok/brood-box/base:latest" = "target:base"
+    "brood-box-base" = "target:base"
   }
 }
 
@@ -45,7 +51,10 @@ target "opencode" {
   tags       = ["${REGISTRY}/opencode:latest"]
   cache-from = ["type=gha,scope=opencode"]
   cache-to   = ["type=gha,mode=max,scope=opencode"]
+  args = {
+    BASE_IMAGE = "brood-box-base"
+  }
   contexts = {
-    "ghcr.io/stacklok/brood-box/base:latest" = "target:base"
+    "brood-box-base" = "target:base"
   }
 }
