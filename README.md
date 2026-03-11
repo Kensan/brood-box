@@ -1,11 +1,32 @@
 # Brood Box
 
+> **Warning**
+> This project is **EXPERIMENTAL**. APIs, CLI flags, config format, and behavior may change without notice between releases. Use at your own risk and please report issues.
+
 Run coding agents in hardware-isolated microVMs. Review every change before it touches your workspace.
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![CI](https://github.com/stacklok/brood-box/actions/workflows/ci.yaml/badge.svg)](https://github.com/stacklok/brood-box/actions/workflows/ci.yaml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/stacklok/brood-box)](https://goreportcard.com/report/github.com/stacklok/brood-box)
+[![Repostatus: Experimental](https://www.repostatus.org/badges/latest/experimental.svg)](https://www.repostatus.org/#experimental)
 
 <!-- TODO: Add a terminal recording / GIF demo here showing the full workflow -->
+
+## Table of Contents
+
+- [Why?](#why)
+- [Features](#features)
+- [Quick Start](#quick-start)
+- [Usage](#usage)
+- [Configuration](#configuration)
+- [Egress Firewall](#egress-firewall)
+- [Supported Agents](#supported-agents)
+- [How It Works](#how-it-works)
+- [Security Model](#security-model)
+- [Documentation](#documentation)
+- [Building from Source](#building-from-source)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Why?
 
@@ -42,12 +63,24 @@ VM. When the agent exits, you review the diff and accept or reject each file.
 ### Prerequisites
 
 - Linux with KVM support (`/dev/kvm` must be accessible), or macOS with Hypervisor.framework (Apple Silicon)
-- [Go 1.25.7+](https://go.dev/dl/)
+- [Go 1.26+](https://go.dev/dl/)
 - [Task](https://taskfile.dev/) (task runner)
 - [GitHub CLI (`gh`)](https://cli.github.com/) (for downloading pre-built runtime artifacts)
 - An API key for your agent (e.g. `ANTHROPIC_API_KEY` for Claude Code)
 
-### Build
+### Install from Release
+
+Download a pre-built binary from [GitHub Releases](https://github.com/stacklok/brood-box/releases):
+
+```bash
+# Example for Linux amd64
+tar xzf bbox-linux-amd64.tar.gz
+sudo mv bbox /usr/local/bin/
+```
+
+Release binaries are self-contained and do not require `libkrun-devel` or any system libraries.
+
+### Build from Source
 
 ```bash
 task build
@@ -294,6 +327,17 @@ Brood Box's isolation is built on several layers:
 - **Path traversal protection** -- Symlinks are validated in-bounds before copying
 - **Per-workspace config restrictions** -- `review.enabled` and egress widening are ignored in `.broodbox.yaml`
 
+## Documentation
+
+Detailed documentation lives in the [`docs/`](docs/) directory:
+
+| Document | Description |
+|----------|-------------|
+| [User Guide](docs/USER_GUIDE.md) | Full CLI reference, configuration, snapshot isolation, egress firewall, MCP proxy, and troubleshooting |
+| [Architecture](docs/ARCHITECTURE.md) | DDD layers, dependency injection, VM lifecycle, guest environment, and security model |
+| [Development Guide](docs/DEVELOPMENT.md) | Prerequisites, task commands, adding agents, writing tests, and code conventions |
+| [macOS Support](docs/MACOS.md) | Apple Silicon setup, building with Homebrew libkrun, and macOS-specific troubleshooting |
+
 ## Building from Source
 
 ```bash
@@ -319,15 +363,18 @@ task verify
 task image-all
 ```
 
-Note: Always use `task` for building, testing, and linting. The Taskfile sets
+Always use `task` for building, testing, and linting. The Taskfile sets
 critical flags, ldflags, and environment variables that raw `go` commands miss.
+See the [Development Guide](docs/DEVELOPMENT.md) for the full command reference.
 
 ## Contributing
 
 Contributions are welcome! Please open an issue to discuss your idea before submitting a PR.
 
-The project follows strict DDD (Domain-Driven Design) layered architecture.
-See [CLAUDE.md](CLAUDE.md) for architecture details and coding conventions.
+The project follows strict DDD (Domain-Driven Design) layered architecture:
+
+- **[Architecture overview](docs/ARCHITECTURE.md)** for understanding the layers and design decisions
+- **[Development guide](docs/DEVELOPMENT.md)** for setting up your environment, running tests, and code conventions
 
 ## License
 

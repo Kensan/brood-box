@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Go 1.25.7+
+- Go 1.26+
 - [Task](https://taskfile.dev/) (task runner)
 - [golangci-lint](https://golangci-lint.run/)
 - [goimports](https://pkg.go.dev/golang.org/x/tools/cmd/goimports)

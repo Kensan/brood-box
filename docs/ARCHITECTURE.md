@@ -319,11 +319,10 @@ Inside the VM:
 ## Relationship to Propolis
 
 Brood Box is a consumer of the [propolis](https://github.com/stacklok/propolis)
-library. It uses propolis via a local `replace` directive in `go.mod`:
-
-```
-replace github.com/stacklok/propolis => ../propolis
-```
+library. It depends on propolis as a tagged module in `go.mod` (e.g.
+`github.com/stacklok/propolis v0.0.16`). The `task build` command downloads
+pre-built propolis runtime artifacts from the matching GitHub release and
+embeds them into the `bbox` binary.
 
 ### Propolis APIs Used
 

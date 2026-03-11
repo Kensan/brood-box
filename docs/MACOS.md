@@ -8,7 +8,7 @@ same propolis framework that powers the Linux backend.
 - Apple Silicon Mac (M1, M2, M3, M4)
 - macOS 11 (Big Sur) or later
 - [Homebrew](https://brew.sh/) libkrun and libkrunfw (for building propolis-runner)
-- Go 1.25+ (matching `go.mod`)
+- Go 1.26+ (matching `go.mod`)
 - [Task](https://taskfile.dev/) runner
 
 ## Installing libkrun
