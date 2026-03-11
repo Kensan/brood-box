@@ -6,6 +6,8 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -441,6 +443,228 @@ func TestSanitizeValue(t *testing.T) {
 			t.Parallel()
 			if got := sanitizeValue(tt.input); got != tt.expected {
 				t.Errorf("sanitizeValue(%q) = %q, want %q", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// setupLogger tests
+// ---------------------------------------------------------------------------
+
+func TestSetupLogger_DebugLevel(t *testing.T) {
+	t.Parallel()
+
+	f, err := os.CreateTemp(t.TempDir(), "log-*.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+
+	logger := setupLogger(f, true)
+	logger.Debug("debug-msg")
+	logger.Info("info-msg")
+
+	// Flush by syncing.
+	_ = f.Sync()
+
+	content, err := os.ReadFile(f.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(string(content), "debug-msg") {
+		t.Errorf("debug message should appear in log when debug=true, got:\n%s", content)
+	}
+	if !strings.Contains(string(content), "info-msg") {
+		t.Errorf("info message should appear in log when debug=true, got:\n%s", content)
+	}
+}
+
+func TestSetupLogger_InfoLevel(t *testing.T) {
+	t.Parallel()
+
+	f, err := os.CreateTemp(t.TempDir(), "log-*.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+
+	logger := setupLogger(f, false)
+	logger.Debug("debug-msg")
+	logger.Info("info-msg")
+
+	_ = f.Sync()
+
+	content, err := os.ReadFile(f.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if strings.Contains(string(content), "debug-msg") {
+		t.Errorf("debug message should NOT appear in log when debug=false, got:\n%s", content)
+	}
+	if !strings.Contains(string(content), "info-msg") {
+		t.Errorf("info message should appear in log when debug=false, got:\n%s", content)
+	}
+}
+
+func TestSetupLogger_NilFile(t *testing.T) {
+	t.Parallel()
+
+	logger := setupLogger(nil, false)
+	if logger == nil {
+		t.Fatal("setupLogger(nil, false) returned nil, expected non-nil logger")
+	}
+
+	// Should not panic when used.
+	logger.Info("test message")
+	logger.Debug("debug message")
+	logger.With("key", "value").Info("with attrs")
+}
+
+// ---------------------------------------------------------------------------
+// openLogFile tests
+// ---------------------------------------------------------------------------
+
+func TestOpenLogFile_DefaultPath(t *testing.T) {
+	// Cannot use t.Parallel() with t.Setenv().
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	vmName := "test-vm-abc123"
+
+	logPath, f, closer, err := openLogFile("", vmName)
+	if err != nil {
+		t.Fatalf("openLogFile returned error: %v", err)
+	}
+	if closer != nil {
+		defer func() { _ = closer.Close() }()
+	}
+
+	if f == nil {
+		t.Fatal("expected non-nil file")
+	}
+
+	// Path should contain expected segments.
+	if !strings.Contains(logPath, ".config") {
+		t.Errorf("log path should contain '.config', got: %s", logPath)
+	}
+	if !strings.Contains(logPath, "broodbox") {
+		t.Errorf("log path should contain 'broodbox', got: %s", logPath)
+	}
+	if !strings.Contains(logPath, "vms") {
+		t.Errorf("log path should contain 'vms', got: %s", logPath)
+	}
+	if !strings.Contains(logPath, vmName) {
+		t.Errorf("log path should contain VM name %q, got: %s", vmName, logPath)
+	}
+	if !strings.Contains(logPath, defaultLogFile) {
+		t.Errorf("log path should contain %q, got: %s", defaultLogFile, logPath)
+	}
+
+	// Directory should exist.
+	dir := filepath.Dir(logPath)
+	info, statErr := os.Stat(dir)
+	if statErr != nil {
+		t.Fatalf("log directory does not exist: %v", statErr)
+	}
+	if !info.IsDir() {
+		t.Error("log path parent is not a directory")
+	}
+}
+
+func TestOpenLogFile_OverridePath(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	overridePath := filepath.Join(tmpDir, "custom.log")
+
+	logPath, f, closer, err := openLogFile(overridePath, "ignored-vm-name")
+	if err != nil {
+		t.Fatalf("openLogFile returned error: %v", err)
+	}
+	if closer != nil {
+		defer func() { _ = closer.Close() }()
+	}
+
+	if logPath != overridePath {
+		t.Errorf("expected override path %q, got %q", overridePath, logPath)
+	}
+	if f == nil {
+		t.Fatal("expected non-nil file")
+	}
+
+	// Verify the file was created at the override path.
+	_, statErr := os.Stat(overridePath)
+	if statErr != nil {
+		t.Fatalf("override log file not created: %v", statErr)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// sanitizeAll tests
+// ---------------------------------------------------------------------------
+
+func TestSanitizeAll(t *testing.T) {
+	t.Parallel()
+
+	input := []string{"hello", "evil\x1b[2J.com", "clean"}
+	got := sanitizeAll(input)
+
+	expected := []string{"hello", "evil[2J.com", "clean"}
+	if len(got) != len(expected) {
+		t.Fatalf("length mismatch: got %d, want %d", len(got), len(expected))
+	}
+	for i := range expected {
+		if got[i] != expected[i] {
+			t.Errorf("sanitizeAll[%d] = %q, want %q", i, got[i], expected[i])
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Cache directory function tests
+// ---------------------------------------------------------------------------
+
+func TestCacheDirFunctions(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		fn        func() (string, error)
+		expectSub string
+	}{
+		{
+			name:      "runtimeCacheDir",
+			fn:        runtimeCacheDir,
+			expectSub: "runtime",
+		},
+		{
+			name:      "firmwareCacheDir",
+			fn:        firmwareCacheDir,
+			expectSub: "firmware",
+		},
+		{
+			name:      "imageCacheDir",
+			fn:        imageCacheDir,
+			expectSub: "images",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			path, err := tt.fn()
+			if err != nil {
+				t.Fatalf("%s() returned error: %v", tt.name, err)
+			}
+			if !strings.Contains(path, "broodbox") {
+				t.Errorf("%s() path should contain 'broodbox', got: %s", tt.name, path)
+			}
+			if !strings.Contains(path, tt.expectSub) {
+				t.Errorf("%s() path should contain %q, got: %s", tt.name, tt.expectSub, path)
 			}
 		})
 	}

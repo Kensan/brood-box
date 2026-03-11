@@ -21,6 +21,7 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"github.com/stacklok/brood-box/pkg/domain/agent"
+	domainconfig "github.com/stacklok/brood-box/pkg/domain/config"
 	"github.com/stacklok/brood-box/pkg/domain/egress"
 	"github.com/stacklok/brood-box/pkg/domain/hostservice"
 	"github.com/stacklok/brood-box/pkg/domain/session"
@@ -1280,6 +1281,256 @@ func TestSandboxRunner_Prepare_MCPFailure_WarnsAndContinues(t *testing.T) {
 
 	assert.True(t, mcpProvider.called, "MCP provider should have been called")
 	assert.Empty(t, sb.VMConfig.HostServices, "no host services should be configured on MCP failure")
+}
+
+// ---------------------------------------------------------------------------
+// Helper function unit tests
+// ---------------------------------------------------------------------------
+
+func TestMergeEnvPatterns(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		base     []string
+		extra    []string
+		expected []string
+	}{
+		{
+			name:     "empty base",
+			base:     nil,
+			extra:    []string{"A", "B"},
+			expected: []string{"A", "B"},
+		},
+		{
+			name:     "empty extra",
+			base:     []string{"X", "Y"},
+			extra:    nil,
+			expected: []string{"X", "Y"},
+		},
+		{
+			name:     "both nil",
+			base:     nil,
+			extra:    nil,
+			expected: []string{},
+		},
+		{
+			name:     "dedup preserves first occurrence",
+			base:     []string{"A", "B"},
+			extra:    []string{"B", "C"},
+			expected: []string{"A", "B", "C"},
+		},
+		{
+			name:     "order preserved",
+			base:     []string{"Z", "A"},
+			extra:    []string{"M", "Z"},
+			expected: []string{"Z", "A", "M"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := mergeEnvPatterns(tt.base, tt.extra)
+			assert.Equal(t, tt.expected, got)
+		})
+	}
+}
+
+func TestResolveCommand(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		base      []string
+		override  []string
+		args      []string
+		expected  []string
+		expectErr bool
+	}{
+		{
+			name:     "base only",
+			base:     []string{"cmd"},
+			override: nil,
+			args:     nil,
+			expected: []string{"cmd"},
+		},
+		{
+			name:     "override only",
+			base:     []string{"cmd"},
+			override: []string{"other"},
+			args:     nil,
+			expected: []string{"other"},
+		},
+		{
+			name:     "override with args",
+			base:     []string{"cmd"},
+			override: []string{"other"},
+			args:     []string{"--flag"},
+			expected: []string{"other", "--flag"},
+		},
+		{
+			name:     "base with args",
+			base:     []string{"cmd"},
+			override: nil,
+			args:     []string{"--flag", "val"},
+			expected: []string{"cmd", "--flag", "val"},
+		},
+		{
+			name:      "both empty returns error",
+			base:      nil,
+			override:  nil,
+			args:      nil,
+			expectErr: true,
+		},
+		{
+			name:      "NUL byte returns error",
+			base:      []string{"cmd"},
+			override:  nil,
+			args:      []string{"bad\x00arg"},
+			expectErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := resolveCommand(tt.base, tt.override, tt.args)
+			if tt.expectErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.expected, got)
+		})
+	}
+}
+
+func TestResolveCommand_DoesNotMutateInputSlices(t *testing.T) {
+	t.Parallel()
+
+	base := []string{"cmd"}
+	override := []string{"other"}
+	args := []string{"--flag"}
+
+	// Save copies.
+	baseCopy := append([]string{}, base...)
+	overrideCopy := append([]string{}, override...)
+	argsCopy := append([]string{}, args...)
+
+	_, err := resolveCommand(base, override, args)
+	require.NoError(t, err)
+
+	assert.Equal(t, baseCopy, base, "base should not be mutated")
+	assert.Equal(t, overrideCopy, override, "override should not be mutated")
+	assert.Equal(t, argsCopy, args, "args should not be mutated")
+}
+
+func TestResolveMCPConfig(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		cfg       *SandboxConfig
+		agentName string
+		wantGroup string
+		wantPort  uint16
+	}{
+		{
+			name:      "zero config applies defaults",
+			cfg:       &SandboxConfig{},
+			agentName: "test",
+			wantGroup: "default",
+			wantPort:  4483,
+		},
+		{
+			name: "global config preserved",
+			cfg: &SandboxConfig{
+				MCP: domainconfig.MCPConfig{
+					Group: "custom-group",
+					Port:  9999,
+				},
+			},
+			agentName: "test",
+			wantGroup: "custom-group",
+			wantPort:  9999,
+		},
+		{
+			name: "agent override wins",
+			cfg: &SandboxConfig{
+				MCP: domainconfig.MCPConfig{
+					Group: "global-group",
+					Port:  5555,
+				},
+				AgentOverrides: map[string]domainconfig.AgentOverride{
+					"test": {
+						MCP: &domainconfig.MCPConfig{
+							Group: "agent-group",
+							Port:  7777,
+						},
+					},
+				},
+			},
+			agentName: "test",
+			wantGroup: "agent-group",
+			wantPort:  7777,
+		},
+		{
+			name: "empty override does not clear global",
+			cfg: &SandboxConfig{
+				MCP: domainconfig.MCPConfig{
+					Group: "global-group",
+					Port:  5555,
+				},
+				AgentOverrides: map[string]domainconfig.AgentOverride{
+					"test": {
+						MCP: &domainconfig.MCPConfig{
+							// Empty group and zero port should not clear global values.
+						},
+					},
+				},
+			},
+			agentName: "test",
+			wantGroup: "global-group",
+			wantPort:  5555,
+		},
+		{
+			name: "agent not in map uses global",
+			cfg: &SandboxConfig{
+				MCP: domainconfig.MCPConfig{
+					Group: "global-group",
+					Port:  6666,
+				},
+				AgentOverrides: map[string]domainconfig.AgentOverride{
+					"other-agent": {
+						MCP: &domainconfig.MCPConfig{
+							Group: "other-group",
+							Port:  8888,
+						},
+					},
+				},
+			},
+			agentName: "test",
+			wantGroup: "global-group",
+			wantPort:  6666,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			runner := NewSandboxRunner(SandboxDeps{
+				Logger: testLogger(),
+			})
+			got := runner.resolveMCPConfig(tt.cfg, tt.agentName)
+
+			assert.Equal(t, tt.wantGroup, got.Group)
+			assert.Equal(t, tt.wantPort, got.Port)
+		})
+	}
 }
 
 func TestSandboxRunner_Prepare_MCPSuccess_AddsHostServices(t *testing.T) {
