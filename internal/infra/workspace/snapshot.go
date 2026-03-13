@@ -10,8 +10,11 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/stacklok/brood-box/internal/infra/process"
 	"github.com/stacklok/brood-box/pkg/domain/snapshot"
@@ -23,6 +26,9 @@ var _ domws.WorkspaceCloner = (*FSWorkspaceCloner)(nil)
 
 // snapshotDirPrefix is the prefix for snapshot temporary directories.
 const snapshotDirPrefix = ".sandbox-snapshot-"
+
+// maxCloneWorkers is the upper bound on parallel file-cloning goroutines.
+const maxCloneWorkers = 16
 
 // snapshotSentinelSuffix is a marker file placed alongside snapshot directories
 // to identify them as sandbox snapshots (vs unrelated directories).
@@ -77,15 +83,21 @@ func (c *FSWorkspaceCloner) CreateSnapshot(ctx context.Context, workspacePath st
 		}
 	}()
 
+	// Worker pool for parallel file cloning. Directory creation and symlink
+	// handling stay synchronous in the walker (dirs must exist before children).
+	workers := min(runtime.NumCPU(), maxCloneWorkers)
+	g, gCtx := errgroup.WithContext(ctx)
+	g.SetLimit(workers)
+
 	err = filepath.WalkDir(absWorkspace, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
 
-		// Check for context cancellation.
+		// Check for context cancellation (also covers errgroup failures).
 		select {
-		case <-ctx.Done():
-			return ctx.Err()
+		case <-gCtx.Done():
+			return gCtx.Err()
 		default:
 		}
 
@@ -101,12 +113,12 @@ func (c *FSWorkspaceCloner) CreateSnapshot(ctx context.Context, workspacePath st
 
 		destPath := filepath.Join(tmpDir, relPath)
 
-		// Handle symlinks first.
+		// Handle symlinks first (metadata-only, fast — stays synchronous).
 		if d.Type()&fs.ModeSymlink != 0 {
 			return c.handleSymlink(absWorkspace, path, relPath, destPath, matcher)
 		}
 
-		// Handle directories.
+		// Handle directories (must be synchronous so children find their parent).
 		if d.IsDir() {
 			if matcher.Match(relPath) || matcher.Match(relPath+"/") {
 				c.logger.Debug("excluding directory from snapshot", "path", relPath)
@@ -125,11 +137,22 @@ func (c *FSWorkspaceCloner) CreateSnapshot(ctx context.Context, workspacePath st
 			return nil
 		}
 
-		return c.cloner.CloneFile(path, destPath)
+		// Capture variables for the goroutine.
+		srcFile, dstFile := path, destPath
+		g.Go(func() error {
+			return c.cloner.CloneFile(srcFile, dstFile)
+		})
+		return nil
 	})
+
+	// Always wait for workers to finish before cleanup runs, even if walk failed.
+	waitErr := g.Wait()
 
 	if err != nil {
 		return nil, fmt.Errorf("walking workspace: %w", err)
+	}
+	if waitErr != nil {
+		return nil, fmt.Errorf("cloning files: %w", waitErr)
 	}
 
 	// Write sentinel file with our PID to identify this as an active snapshot.

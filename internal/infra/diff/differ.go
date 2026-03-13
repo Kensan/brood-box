@@ -7,6 +7,7 @@ package diff
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -14,10 +15,13 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/sergi/go-diff/diffmatchpatch"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/stacklok/brood-box/pkg/domain/snapshot"
 )
@@ -41,17 +45,28 @@ type fileEntry struct {
 
 // Diff walks both directories and produces a sorted list of FileChange.
 func (d *FSDiffer) Diff(originalDir, snapshotDir string, matcher snapshot.Matcher) ([]snapshot.FileChange, error) {
-	origIndex, err := buildIndex(originalDir, matcher)
-	if err != nil {
-		return nil, fmt.Errorf("indexing original directory: %w", err)
-	}
+	// Build both indexes concurrently — they operate on independent directory trees.
+	var origIndex, snapIndex map[string]fileEntry
 
-	// Apply the same matcher to the snapshot index so that gitignored files
-	// (build artifacts, etc.) that were copied into the snapshot don't appear
-	// as spurious "added" entries in the diff.
-	snapIndex, err := buildIndex(snapshotDir, matcher)
-	if err != nil {
-		return nil, fmt.Errorf("indexing snapshot directory: %w", err)
+	g := new(errgroup.Group)
+	g.Go(func() error {
+		var err error
+		origIndex, err = buildIndex(originalDir, matcher)
+		if err != nil {
+			return fmt.Errorf("indexing original directory: %w", err)
+		}
+		return nil
+	})
+	g.Go(func() error {
+		var err error
+		snapIndex, err = buildIndex(snapshotDir, matcher)
+		if err != nil {
+			return fmt.Errorf("indexing snapshot directory: %w", err)
+		}
+		return nil
+	})
+	if err := g.Wait(); err != nil {
+		return nil, err
 	}
 
 	var changes []snapshot.FileChange
@@ -108,14 +123,30 @@ func (d *FSDiffer) Diff(originalDir, snapshotDir string, matcher snapshot.Matche
 	return changes, nil
 }
 
+// maxHashWorkers is the upper bound on parallel file-hashing goroutines.
+const maxHashWorkers = 16
+
 // buildIndex walks a directory and builds a map of relPath -> fileEntry.
-// If matcher is non-nil, excluded paths are skipped.
+// If matcher is non-nil, excluded paths are skipped. File hashing is
+// parallelized across multiple workers for throughput.
 func buildIndex(root string, matcher snapshot.Matcher) (map[string]fileEntry, error) {
+	var mu sync.Mutex
 	index := make(map[string]fileEntry)
+
+	workers := min(runtime.NumCPU(), maxHashWorkers)
+	g, gCtx := errgroup.WithContext(context.Background())
+	g.SetLimit(workers)
 
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
+		}
+
+		// Abort walk early if a worker has already failed.
+		select {
+		case <-gCtx.Done():
+			return gCtx.Err()
+		default:
 		}
 
 		relPath, err := filepath.Rel(root, path)
@@ -142,20 +173,33 @@ func buildIndex(root string, matcher snapshot.Matcher) (map[string]fileEntry, er
 			return nil
 		}
 
-		hash, err := hashFile(path)
-		if err != nil {
-			return fmt.Errorf("hashing %s: %w", relPath, err)
-		}
-
-		index[relPath] = fileEntry{
-			hash:    hash,
-			absPath: path,
-		}
+		// Capture variables for the goroutine.
+		rp, fp := relPath, path
+		g.Go(func() error {
+			hash, err := hashFile(fp)
+			if err != nil {
+				return fmt.Errorf("hashing %s: %w", rp, err)
+			}
+			mu.Lock()
+			index[rp] = fileEntry{hash: hash, absPath: fp}
+			mu.Unlock()
+			return nil
+		})
 
 		return nil
 	})
 
-	return index, err
+	// Always wait for workers, even if walk failed.
+	waitErr := g.Wait()
+
+	if err != nil {
+		return nil, err
+	}
+	if waitErr != nil {
+		return nil, waitErr
+	}
+
+	return index, nil
 }
 
 // hashFile computes the SHA-256 hex digest of a file.
