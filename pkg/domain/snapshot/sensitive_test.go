@@ -1,0 +1,98 @@
+// SPDX-FileCopyrightText: Copyright 2025 Stacklok, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+package snapshot
+
+import "testing"
+
+func TestClassifyPath(t *testing.T) {
+	t.Parallel()
+
+	rules := DefaultSensitivePathRules()
+
+	tests := []struct {
+		name      string
+		relPath   string
+		wantTier  SensitivityTier
+		wantSense bool
+	}{
+		// Tier 1 — auto-exec
+		{name: "git hook pre-commit", relPath: ".git/hooks/pre-commit", wantTier: TierAutoExec, wantSense: true},
+		{name: "git hook post-merge", relPath: ".git/hooks/post-merge", wantTier: TierAutoExec, wantSense: true},
+		{name: "husky hook", relPath: ".husky/pre-commit", wantTier: TierAutoExec, wantSense: true},
+		{name: "envrc at root", relPath: ".envrc", wantTier: TierAutoExec, wantSense: true},
+		{name: "pre-commit config", relPath: ".pre-commit-config.yaml", wantTier: TierAutoExec, wantSense: true},
+
+		// Tier 2 — CI/build
+		{name: "github workflow", relPath: ".github/workflows/ci.yml", wantTier: TierBuildCI, wantSense: true},
+		{name: "gitlab ci", relPath: ".gitlab-ci.yml", wantTier: TierBuildCI, wantSense: true},
+		{name: "gitlab dir", relPath: ".gitlab/agents/config.yaml", wantTier: TierBuildCI, wantSense: true},
+		{name: "circleci", relPath: ".circleci/config.yml", wantTier: TierBuildCI, wantSense: true},
+		{name: "jenkinsfile root", relPath: "Jenkinsfile", wantTier: TierBuildCI, wantSense: true},
+		{name: "jenkinsfile nested", relPath: "sub/Jenkinsfile", wantTier: TierBuildCI, wantSense: true},
+		{name: "travis", relPath: ".travis.yml", wantTier: TierBuildCI, wantSense: true},
+		{name: "makefile root", relPath: "Makefile", wantTier: TierBuildCI, wantSense: true},
+		{name: "makefile nested", relPath: "sub/Makefile", wantTier: TierBuildCI, wantSense: true},
+		{name: "gnumakefile", relPath: "GNUmakefile", wantTier: TierBuildCI, wantSense: true},
+		{name: "taskfile yaml", relPath: "Taskfile.yaml", wantTier: TierBuildCI, wantSense: true},
+		{name: "taskfile yml", relPath: "Taskfile.yml", wantTier: TierBuildCI, wantSense: true},
+		{name: "justfile", relPath: "Justfile", wantTier: TierBuildCI, wantSense: true},
+
+		// Not sensitive
+		{name: "normal go file", relPath: "main.go", wantTier: TierNone, wantSense: false},
+		{name: "normal nested file", relPath: "pkg/foo/bar.go", wantTier: TierNone, wantSense: false},
+		{name: "git config not hook", relPath: ".git/config", wantTier: TierNone, wantSense: false},
+		{name: "envrc in subdir", relPath: "sub/.envrc", wantTier: TierNone, wantSense: false},
+		{name: "travis in subdir", relPath: "sub/.travis.yml", wantTier: TierNone, wantSense: false},
+		{name: "pre-commit in subdir", relPath: "sub/.pre-commit-config.yaml", wantTier: TierNone, wantSense: false},
+		{name: "github non-workflow", relPath: ".github/CODEOWNERS", wantTier: TierNone, wantSense: false},
+		{name: "gitlab-ci in subdir", relPath: "sub/.gitlab-ci.yml", wantTier: TierNone, wantSense: false},
+
+		// Defense-in-depth: non-canonical paths cleaned before matching
+		{name: "non-canonical git hook", relPath: ".git/hooks/../hooks/pre-commit", wantTier: TierAutoExec, wantSense: true},
+		{name: "double slash in path", relPath: ".git//hooks/pre-commit", wantTier: TierAutoExec, wantSense: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			tier, reason, sensitive := ClassifyPath(tt.relPath, rules)
+			if sensitive != tt.wantSense {
+				t.Errorf("ClassifyPath(%q): sensitive = %v, want %v", tt.relPath, sensitive, tt.wantSense)
+			}
+			if tier != tt.wantTier {
+				t.Errorf("ClassifyPath(%q): tier = %v, want %v", tt.relPath, tier, tt.wantTier)
+			}
+			if sensitive && reason == "" {
+				t.Errorf("ClassifyPath(%q): sensitive but reason is empty", tt.relPath)
+			}
+			if !sensitive && reason != "" {
+				t.Errorf("ClassifyPath(%q): not sensitive but reason = %q", tt.relPath, reason)
+			}
+		})
+	}
+}
+
+func TestSensitivityTierString(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		tier SensitivityTier
+		want string
+	}{
+		{TierNone, "none"},
+		{TierAutoExec, "auto-exec"},
+		{TierBuildCI, "build/ci"},
+		{SensitivityTier(99), "unknown"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.want, func(t *testing.T) {
+			t.Parallel()
+			if got := tt.tier.String(); got != tt.want {
+				t.Errorf("SensitivityTier(%d).String() = %q, want %q", tt.tier, got, tt.want)
+			}
+		})
+	}
+}

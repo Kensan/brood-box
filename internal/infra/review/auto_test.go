@@ -4,8 +4,12 @@
 package review
 
 import (
+	"bytes"
 	"log/slog"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/stacklok/brood-box/pkg/domain/snapshot"
 )
@@ -40,17 +44,108 @@ func TestAutoAcceptReviewer_Review(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			r := NewAutoAcceptReviewer(slog.Default())
+			r := NewAutoAcceptReviewer(slog.Default(), &bytes.Buffer{})
 			result, err := r.Review(tt.changes)
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if len(result.Accepted) != len(tt.changes) {
-				t.Errorf("expected %d accepted, got %d", len(tt.changes), len(result.Accepted))
-			}
-			if len(result.Rejected) != 0 {
-				t.Errorf("expected 0 rejected, got %d", len(result.Rejected))
-			}
+			require.NoError(t, err)
+			assert.Len(t, result.Accepted, len(tt.changes))
+			assert.Empty(t, result.Rejected)
 		})
 	}
+}
+
+func TestAutoAcceptReviewer_Tier1Rejected(t *testing.T) {
+	t.Parallel()
+
+	var stderr bytes.Buffer
+	r := NewAutoAcceptReviewer(slog.Default(), &stderr)
+
+	changes := []snapshot.FileChange{
+		{RelPath: ".git/hooks/pre-commit", Kind: snapshot.Added},
+		{RelPath: "main.go", Kind: snapshot.Modified},
+	}
+
+	result, err := r.Review(changes)
+	require.NoError(t, err)
+
+	assert.Len(t, result.Accepted, 1)
+	assert.Equal(t, "main.go", result.Accepted[0].RelPath)
+
+	assert.Len(t, result.Rejected, 1)
+	assert.Equal(t, ".git/hooks/pre-commit", result.Rejected[0].RelPath)
+
+	output := stderr.String()
+	assert.Contains(t, output, "REJECTED")
+	assert.Contains(t, output, ".git/hooks/pre-commit")
+	assert.Contains(t, output, "Use --review")
+}
+
+func TestAutoAcceptReviewer_Tier2Warned(t *testing.T) {
+	t.Parallel()
+
+	var stderr bytes.Buffer
+	r := NewAutoAcceptReviewer(slog.Default(), &stderr)
+
+	changes := []snapshot.FileChange{
+		{RelPath: "Makefile", Kind: snapshot.Modified},
+		{RelPath: "main.go", Kind: snapshot.Modified},
+	}
+
+	result, err := r.Review(changes)
+	require.NoError(t, err)
+
+	// Tier 2 is accepted with warning.
+	assert.Len(t, result.Accepted, 2)
+	assert.Empty(t, result.Rejected)
+
+	output := stderr.String()
+	assert.Contains(t, output, "WARNING")
+	assert.Contains(t, output, "Makefile")
+	assert.Contains(t, output, "Use --review")
+}
+
+func TestAutoAcceptReviewer_MixedTiers(t *testing.T) {
+	t.Parallel()
+
+	var stderr bytes.Buffer
+	r := NewAutoAcceptReviewer(slog.Default(), &stderr)
+
+	changes := []snapshot.FileChange{
+		{RelPath: ".git/hooks/post-merge", Kind: snapshot.Added},
+		{RelPath: ".github/workflows/ci.yml", Kind: snapshot.Modified},
+		{RelPath: "main.go", Kind: snapshot.Modified},
+		{RelPath: ".envrc", Kind: snapshot.Added},
+	}
+
+	result, err := r.Review(changes)
+	require.NoError(t, err)
+
+	// Tier 1 (.git/hooks, .envrc) rejected; Tier 2 (.github/workflows) + normal accepted.
+	assert.Len(t, result.Rejected, 2)
+	assert.Len(t, result.Accepted, 2)
+
+	output := stderr.String()
+	assert.Contains(t, output, "2 file(s) auto-rejected")
+	assert.Contains(t, output, "1 file(s) warned")
+}
+
+func TestAutoAcceptReviewer_NoSummaryForNormalFiles(t *testing.T) {
+	t.Parallel()
+
+	var stderr bytes.Buffer
+	r := NewAutoAcceptReviewer(slog.Default(), &stderr)
+
+	changes := []snapshot.FileChange{
+		{RelPath: "main.go", Kind: snapshot.Modified},
+		{RelPath: "util.go", Kind: snapshot.Added},
+	}
+
+	result, err := r.Review(changes)
+	require.NoError(t, err)
+
+	assert.Len(t, result.Accepted, 2)
+	assert.Empty(t, result.Rejected)
+
+	// No security summary printed for normal files only.
+	assert.NotContains(t, stderr.String(), "auto-rejected")
+	assert.NotContains(t, stderr.String(), "Use --review")
 }

@@ -607,7 +607,7 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 	if interactiveReview {
 		deps.Reviewer = review.NewInteractiveReviewer(os.Stdin, os.Stdout)
 	} else {
-		deps.Reviewer = review.NewAutoAcceptReviewer(logger)
+		deps.Reviewer = review.NewAutoAcceptReviewer(logger, os.Stderr)
 	}
 	deps.Flusher = review.NewFSFlusher()
 	deps.Differ = diff.NewFSDiffer()

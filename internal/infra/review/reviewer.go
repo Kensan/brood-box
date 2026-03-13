@@ -33,13 +33,18 @@ const (
 
 // InteractiveReviewer implements Reviewer with terminal I/O.
 type InteractiveReviewer struct {
-	in  io.Reader
-	out io.Writer
+	in    io.Reader
+	out   io.Writer
+	rules []snapshot.SensitivePathRule
 }
 
 // NewInteractiveReviewer creates a reviewer that reads from in and writes to out.
 func NewInteractiveReviewer(in io.Reader, out io.Writer) *InteractiveReviewer {
-	return &InteractiveReviewer{in: in, out: out}
+	return &InteractiveReviewer{
+		in:    in,
+		out:   out,
+		rules: snapshot.DefaultSensitivePathRules(),
+	}
 }
 
 // kindIndicator returns a styled prefix character for a file change kind.
@@ -96,10 +101,21 @@ func (r *InteractiveReviewer) Review(changes []snapshot.FileChange) (snapshot.Re
 	// instead of \n, causing the default ScanLines to hang.
 	scanner.Split(scanLinesAny)
 
+	warnStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("3"))
+
 	for i, ch := range changes {
 		_, _ = fmt.Fprintf(r.out, "%s\n",
 			ruleStyle.Render(fmt.Sprintf("── Change %d/%d: [%s] %s ──",
 				i+1, len(changes), ch.Kind, ch.RelPath)))
+
+		if tier, reason, sensitive := snapshot.ClassifyPath(ch.RelPath, r.rules); sensitive {
+			label := "SECURITY"
+			if tier == snapshot.TierAutoExec {
+				label = "AUTO-EXEC"
+			}
+			_, _ = fmt.Fprintf(r.out, "%s\n",
+				warnStyle.Render(fmt.Sprintf("⚠ %s: %s", label, reason)))
+		}
 
 		if ch.UnifiedDiff != "" {
 			if renderer != nil {

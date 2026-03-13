@@ -219,6 +219,67 @@ func TestInteractiveReviewer_RejectAllOnFirst(t *testing.T) {
 	assert.Len(t, result.Rejected, 2)
 }
 
+func TestInteractiveReviewer_Tier1BannerAutoExec(t *testing.T) {
+	t.Parallel()
+
+	changes := []snapshot.FileChange{
+		{RelPath: ".git/hooks/pre-commit", Kind: snapshot.Added, UnifiedDiff: "diff"},
+	}
+
+	input := "y\n"
+	var out bytes.Buffer
+	r := NewInteractiveReviewer(strings.NewReader(input), &out)
+
+	result, err := r.Review(changes)
+	require.NoError(t, err)
+	assert.Len(t, result.Accepted, 1)
+
+	output := out.String()
+	assert.Contains(t, output, "AUTO-EXEC")
+	assert.Contains(t, output, "git hook")
+}
+
+func TestInteractiveReviewer_Tier2BannerSecurity(t *testing.T) {
+	t.Parallel()
+
+	changes := []snapshot.FileChange{
+		{RelPath: "Makefile", Kind: snapshot.Modified, UnifiedDiff: "diff"},
+	}
+
+	input := "y\n"
+	var out bytes.Buffer
+	r := NewInteractiveReviewer(strings.NewReader(input), &out)
+
+	result, err := r.Review(changes)
+	require.NoError(t, err)
+	assert.Len(t, result.Accepted, 1)
+
+	output := out.String()
+	assert.Contains(t, output, "SECURITY")
+	assert.Contains(t, output, "build system")
+	// Tier 2 should NOT show AUTO-EXEC label.
+	assert.NotContains(t, output, "AUTO-EXEC")
+}
+
+func TestInteractiveReviewer_NoBannerForNormalPath(t *testing.T) {
+	t.Parallel()
+
+	changes := []snapshot.FileChange{
+		{RelPath: "main.go", Kind: snapshot.Modified, UnifiedDiff: "diff"},
+	}
+
+	input := "y\n"
+	var out bytes.Buffer
+	r := NewInteractiveReviewer(strings.NewReader(input), &out)
+
+	result, err := r.Review(changes)
+	require.NoError(t, err)
+	assert.Len(t, result.Accepted, 1)
+
+	assert.NotContains(t, out.String(), "SECURITY")
+	assert.NotContains(t, out.String(), "AUTO-EXEC")
+}
+
 func TestInteractiveReviewer_ReviewComplete(t *testing.T) {
 	t.Parallel()
 
