@@ -6,6 +6,7 @@ package credential
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -30,27 +31,28 @@ const keychainService = "Claude Code-credentials"
 //   - No credentials exist yet (first run), or
 //   - The stored access token has expired and the host has a fresher one.
 type ClaudeCodeSeeder struct {
-	logger *slog.Logger
+	logger    *slog.Logger
+	readHost  func() ([]byte, string, error) // reads host credentials
+	nowMs     func() int64                   // current time in epoch ms
 }
 
-// NewClaudeCodeSeeder creates a new ClaudeCodeSeeder.
+// NewClaudeCodeSeeder creates a new ClaudeCodeSeeder with production defaults.
 func NewClaudeCodeSeeder(logger *slog.Logger) *ClaudeCodeSeeder {
-	return &ClaudeCodeSeeder{logger: logger}
+	return &ClaudeCodeSeeder{
+		logger:   logger,
+		readHost: readHostClaudeCredentials,
+		nowMs:    func() int64 { return time.Now().UnixMilli() },
+	}
 }
 
-// readHostCreds is a package-level indirection for readHostClaudeCredentials,
-// allowing tests to inject fake host credential data without hitting the real
-// Keychain or filesystem.
-var readHostCreds = readHostClaudeCredentials
-
-// Seed implements credential.CredentialSeeder. It ensures the store has a fresh
-// OAuth token for Claude Code by comparing host and stored expiry timestamps.
-// Returns nil when no host credentials are available (not an error).
-func (s *ClaudeCodeSeeder) Seed(store domaincredential.Store) error {
+// Seed implements credential.Seeder. It ensures the file store has a
+// fresh OAuth token for Claude Code by comparing host and stored expiry
+// timestamps. Returns nil when no host credentials are available (not an error).
+func (s *ClaudeCodeSeeder) Seed(store domaincredential.FileStore) error {
 	const agentName = "claude-code"
 
 	// Read host credentials first — if unavailable, nothing to do.
-	hostCreds, source, err := readHostCreds()
+	hostCreds, source, err := s.readHost()
 	if err != nil {
 		s.logger.Debug("no host Claude Code credentials found", "error", err)
 		return nil
@@ -58,11 +60,16 @@ func (s *ClaudeCodeSeeder) Seed(store domaincredential.Store) error {
 
 	storedData, readErr := store.ReadFile(agentName, claudeCodeCredPath)
 
-	// If stored credentials exist and are not expired, keep them.
+	// Distinguish "not found" (first run) from real errors (permissions, etc).
+	if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
+		return fmt.Errorf("reading stored credentials: %w", readErr)
+	}
+
+	// Stored credentials exist — check expiry before overwriting.
 	if readErr == nil {
 		storedExp := extractExpiresAt(storedData)
 		hostExp := extractExpiresAt(hostCreds)
-		if storedExp > 0 && storedExp > timeNowMs() {
+		if storedExp > 0 && storedExp > s.nowMs() {
 			s.logger.Debug("stored credentials still valid, skipping seed",
 				"expires_at", storedExp)
 			return nil
@@ -75,28 +82,19 @@ func (s *ClaudeCodeSeeder) Seed(store domaincredential.Store) error {
 		}
 		s.logger.Info("stored credentials expired, refreshing from host",
 			"source", source)
-	}
-
-	// Write host credentials to the store. Use OverwriteFile when replacing
-	// existing credentials, SeedFile for the initial write.
-	if readErr == nil {
 		if err := store.OverwriteFile(agentName, claudeCodeCredPath, hostCreds); err != nil {
 			return fmt.Errorf("overwriting Claude Code credentials: %w", err)
 		}
-	} else {
-		if err := store.SeedFile(agentName, claudeCodeCredPath, hostCreds); err != nil {
-			return fmt.Errorf("seeding Claude Code credentials: %w", err)
-		}
+		s.logger.Info("seeded Claude Code credentials from host", "source", source)
+		return nil
 	}
 
+	// No stored credentials — initial seed.
+	if err := store.SeedFile(agentName, claudeCodeCredPath, hostCreds); err != nil {
+		return fmt.Errorf("seeding Claude Code credentials: %w", err)
+	}
 	s.logger.Info("seeded Claude Code credentials from host", "source", source)
 	return nil
-}
-
-// timeNowMs returns the current time in milliseconds since epoch.
-// Declared as a variable for testing.
-var timeNowMs = func() int64 {
-	return time.Now().UnixMilli()
 }
 
 // extractExpiresAt parses the expiresAt field from Claude Code credentials JSON.
@@ -119,9 +117,11 @@ func extractExpiresAt(data []byte) int64 {
 // On other platforms, only checks the credentials file.
 func readHostClaudeCredentials() ([]byte, string, error) {
 	if runtime.GOOS == "darwin" {
-		if creds, err := readKeychainCredentials(); err == nil {
+		creds, err := readKeychainCredentials()
+		if err == nil {
 			return creds, "macOS Keychain", nil
 		}
+		slog.Debug("keychain read failed, falling back to credentials file", "error", err)
 	}
 
 	// Fall back to credentials file.

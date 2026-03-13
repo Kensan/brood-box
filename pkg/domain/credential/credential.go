@@ -23,7 +23,12 @@ type Store interface {
 	// Extract copies credential files from the guest rootfs after the
 	// session ends, saving them for the next boot.
 	Extract(rootfsPath, agentName string, credentialPaths []string) error
+}
 
+// FileStore provides CRUD access to individual credential files in the store.
+// Used by Seeder implementations to read and write credential files
+// independently of the VM lifecycle.
+type FileStore interface {
 	// SeedFile writes a file into the credential store for an agent.
 	// relPath is relative to the agent's home (e.g. ".claude/.credentials.json").
 	// No-op if the file already exists in the store.
@@ -41,8 +46,8 @@ type Store interface {
 	OverwriteFile(agentName, relPath string, content []byte) error
 }
 
-// CredentialSeeder seeds fresh credentials from the host into the store
+// Seeder seeds fresh credentials from the host into the file store
 // before VM boot. Each agent has a different implementation.
-type CredentialSeeder interface {
-	Seed(store Store) error
+type Seeder interface {
+	Seed(store FileStore) error
 }

@@ -73,30 +73,35 @@ func makeCreds(t *testing.T, expiresAt int64) []byte {
 	return data
 }
 
-// TestSeedExpiry tests the expiry-aware credential seeding logic by calling
-// ClaudeCodeSeeder.Seed with injected host credentials via the readHostCreds
-// package-level variable.
-// NOT parallel — subtests mutate the package-level timeNowMs and readHostCreds variables.
+// testSeeder creates a ClaudeCodeSeeder with injected host credential reader
+// and time function for testing.
+func testSeeder(t *testing.T, readHost func() ([]byte, string, error), nowMs func() int64) *ClaudeCodeSeeder {
+	t.Helper()
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	s := NewClaudeCodeSeeder(logger)
+	if readHost != nil {
+		s.readHost = readHost
+	}
+	if nowMs != nil {
+		s.nowMs = nowMs
+	}
+	return s
+}
+
+// TestSeedExpiry tests the expiry-aware credential seeding logic.
 func TestSeedExpiry(t *testing.T) {
+	t.Parallel()
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
-	origTimeNowMs := timeNowMs
-	origReadHostCreds := readHostCreds
-	t.Cleanup(func() {
-		timeNowMs = origTimeNowMs
-		readHostCreds = origReadHostCreds
-	})
-
-	seeder := NewClaudeCodeSeeder(logger)
-
 	t.Run("seeds when no stored credentials exist", func(t *testing.T) {
+		t.Parallel()
 		baseDir := t.TempDir()
 		store := NewFSStore(baseDir, logger)
 		hostCreds := makeCreds(t, 9999999999999)
 
-		readHostCreds = func() ([]byte, string, error) {
+		seeder := testSeeder(t, func() ([]byte, string, error) {
 			return hostCreds, "test", nil
-		}
+		}, nil)
 
 		if err := seeder.Seed(store); err != nil {
 			t.Fatalf("Seed failed: %v", err)
@@ -112,6 +117,7 @@ func TestSeedExpiry(t *testing.T) {
 	})
 
 	t.Run("keeps valid stored credentials", func(t *testing.T) {
+		t.Parallel()
 		baseDir := t.TempDir()
 		store := NewFSStore(baseDir, logger)
 
@@ -121,10 +127,9 @@ func TestSeedExpiry(t *testing.T) {
 		}
 
 		// Host has different credentials, but stored ones are still valid.
-		readHostCreds = func() ([]byte, string, error) {
+		seeder := testSeeder(t, func() ([]byte, string, error) {
 			return makeCreds(t, 8888888888888), "test", nil
-		}
-		timeNowMs = func() int64 { return 1000000000000 }
+		}, func() int64 { return 1000000000000 })
 
 		if err := seeder.Seed(store); err != nil {
 			t.Fatalf("Seed failed: %v", err)
@@ -140,6 +145,7 @@ func TestSeedExpiry(t *testing.T) {
 	})
 
 	t.Run("overwrites expired with fresher host creds", func(t *testing.T) {
+		t.Parallel()
 		baseDir := t.TempDir()
 		store := NewFSStore(baseDir, logger)
 
@@ -148,10 +154,9 @@ func TestSeedExpiry(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		timeNowMs = func() int64 { return 2000000000000 }
-		readHostCreds = func() ([]byte, string, error) {
+		seeder := testSeeder(t, func() ([]byte, string, error) {
 			return makeCreds(t, 3000000000000), "test", nil
-		}
+		}, func() int64 { return 2000000000000 })
 
 		if err := seeder.Seed(store); err != nil {
 			t.Fatalf("Seed failed: %v", err)
@@ -167,6 +172,7 @@ func TestSeedExpiry(t *testing.T) {
 	})
 
 	t.Run("skips when host creds not fresher", func(t *testing.T) {
+		t.Parallel()
 		baseDir := t.TempDir()
 		store := NewFSStore(baseDir, logger)
 
@@ -175,11 +181,10 @@ func TestSeedExpiry(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		timeNowMs = func() int64 { return 2000000000000 }
 		// Host creds are older than stored.
-		readHostCreds = func() ([]byte, string, error) {
+		seeder := testSeeder(t, func() ([]byte, string, error) {
 			return makeCreds(t, 500000000000), "test", nil
-		}
+		}, func() int64 { return 2000000000000 })
 
 		if err := seeder.Seed(store); err != nil {
 			t.Fatalf("Seed failed: %v", err)
@@ -195,12 +200,13 @@ func TestSeedExpiry(t *testing.T) {
 	})
 
 	t.Run("no-op when host creds unavailable", func(t *testing.T) {
+		t.Parallel()
 		baseDir := t.TempDir()
 		store := NewFSStore(baseDir, logger)
 
-		readHostCreds = func() ([]byte, string, error) {
+		seeder := testSeeder(t, func() ([]byte, string, error) {
 			return nil, "", fmt.Errorf("no credentials available")
-		}
+		}, nil)
 
 		if err := seeder.Seed(store); err != nil {
 			t.Fatalf("Seed should return nil when host creds unavailable: %v", err)

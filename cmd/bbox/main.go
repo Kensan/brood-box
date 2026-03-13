@@ -1034,9 +1034,9 @@ func sanitizeAll(ss []string) []string {
 	return out
 }
 
-// credentialSeederForAgent returns a CredentialSeeder for the given agent,
+// credentialSeederForAgent returns a Seeder for the given agent,
 // or nil if no seeder is available.
-func credentialSeederForAgent(name string, logger *slog.Logger) credential.CredentialSeeder {
+func credentialSeederForAgent(name string, logger *slog.Logger) credential.Seeder {
 	switch name {
 	case "claude-code":
 		return infracredential.NewClaudeCodeSeeder(logger)

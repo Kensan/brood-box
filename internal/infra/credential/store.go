@@ -355,8 +355,21 @@ func (s *FSStore) SeedFile(agentName, relPath string, content []byte) error {
 		return fmt.Errorf("creating parent dirs: %w", err)
 	}
 
-	if err := os.WriteFile(dst, content, filePerm); err != nil {
-		return fmt.Errorf("writing seed file: %w", err)
+	// Atomic write: temp file + rename to avoid partial files on crash,
+	// matching the OverwriteFile and extractFile patterns.
+	tmpPath, err := tempFilePath(filepath.Dir(dst))
+	if err != nil {
+		return fmt.Errorf("generating temp path: %w", err)
+	}
+
+	if err := os.WriteFile(tmpPath, content, filePerm); err != nil {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("writing temp file: %w", err)
+	}
+
+	if err := os.Rename(tmpPath, dst); err != nil {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("atomic rename: %w", err)
 	}
 
 	s.logger.Info("seeded credential file",
@@ -376,6 +389,10 @@ func (s *FSStore) ReadFile(agentName, relPath string) ([]byte, error) {
 	data, err := os.ReadFile(src)
 	if err != nil {
 		return nil, fmt.Errorf("reading credential file: %w", err)
+	}
+
+	if int64(len(data)) > credential.MaxFileSize {
+		return nil, fmt.Errorf("credential file exceeds max size (%d bytes)", credential.MaxFileSize)
 	}
 
 	return data, nil
