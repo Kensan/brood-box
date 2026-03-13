@@ -23,4 +23,20 @@ type Store interface {
 	// Extract copies credential files from the guest rootfs after the
 	// session ends, saving them for the next boot.
 	Extract(rootfsPath, agentName string, credentialPaths []string) error
+
+	// SeedFile writes a file into the credential store for an agent.
+	// relPath is relative to the agent's home (e.g. ".claude/.credentials.json").
+	// No-op if the file already exists in the store.
+	SeedFile(agentName, relPath string, content []byte) error
+
+	// ReadFile reads a file from the credential store for an agent.
+	// relPath is relative to the agent's home (e.g. ".claude/.credentials.json").
+	// Returns os.ErrNotExist if the file does not exist.
+	ReadFile(agentName, relPath string) ([]byte, error)
+
+	// OverwriteFile writes a file into the credential store for an agent,
+	// replacing any existing content. relPath is relative to the agent's
+	// home (e.g. ".claude/.credentials.json"). Unlike SeedFile, this
+	// always writes regardless of whether the file already exists.
+	OverwriteFile(agentName, relPath string, content []byte) error
 }
