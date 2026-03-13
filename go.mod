@@ -9,13 +9,12 @@ require (
 	charm.land/glamour/v2 v2.0.0
 	charm.land/lipgloss/v2 v2.0.2
 	github.com/adrg/xdg v0.5.3
-	github.com/elastic/go-seccomp-bpf v1.6.0
 	github.com/gofrs/flock v0.13.0
 	github.com/pelletier/go-toml/v2 v2.2.4
 	github.com/sabhiram/go-gitignore v0.0.0-20210923224102-525f6e181f06
 	github.com/sergi/go-diff v1.4.0
 	github.com/spf13/cobra v1.10.2
-	github.com/stacklok/propolis v0.0.19
+	github.com/stacklok/propolis v0.0.20
 	github.com/stacklok/toolhive v0.12.1
 	github.com/stacklok/toolhive-core v0.0.11
 	github.com/stretchr/testify v1.11.1
@@ -90,6 +89,7 @@ require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/dylibso/observe-sdk/go v0.0.0-20240819160327-2d926c5d788a // indirect
 	github.com/ebitengine/purego v0.8.4 // indirect
+	github.com/elastic/go-seccomp-bpf v1.6.0 // indirect
 	github.com/emicklei/go-restful/v3 v3.12.2 // indirect
 	github.com/evanphx/json-patch/v5 v5.9.11 // indirect
 	github.com/extism/go-sdk v1.7.0 // indirect

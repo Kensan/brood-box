@@ -770,7 +770,7 @@ func TestMergeConfigs_MCPAuthz(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name string
+		name   string
 		global *Config
 		local  *Config
 		want   *MCPAuthzConfig

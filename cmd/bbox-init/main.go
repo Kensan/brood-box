@@ -18,8 +18,8 @@ import (
 	"time"
 
 	"github.com/stacklok/brood-box/internal/guest/homefs"
-	"github.com/stacklok/brood-box/internal/guest/seccomp"
 	"github.com/stacklok/propolis/guest/boot"
+	"github.com/stacklok/propolis/guest/harden"
 	"github.com/stacklok/propolis/guest/reaper"
 )
 
@@ -76,7 +76,7 @@ func main() {
 			"error", err)
 	}
 
-	if err := seccomp.Apply(); err != nil {
+	if err := harden.ApplySeccomp(); err != nil {
 		logger.Error("seccomp filter failed", "error", err)
 		halt()
 		return
