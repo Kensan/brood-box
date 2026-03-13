@@ -547,7 +547,17 @@ func run(parentCtx context.Context, agentName string, flags runFlags) error {
 	var credentialStore credential.Store
 	if saveCredentials {
 		credStateDir := filepath.Join(xdg.ConfigHome, "broodbox", "agent-state")
-		credentialStore = infracredential.NewFSStore(credStateDir, logger)
+		fsStore := infracredential.NewFSStore(credStateDir, logger)
+		credentialStore = fsStore
+
+		// Seed Claude Code credentials from the host if not already stored.
+		// This bootstraps the first session so OAuth works without a browser.
+		if agentName == "claude-code" {
+			seeder := infracredential.NewClaudeCodeSeeder(logger)
+			if err := seeder.Seed(fsStore); err != nil {
+				logger.Warn("failed to seed Claude Code credentials", "error", err)
+			}
+		}
 	}
 
 	if credentialStore != nil {
