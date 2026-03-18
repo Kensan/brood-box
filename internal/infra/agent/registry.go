@@ -10,6 +10,7 @@ import (
 
 	domainagent "github.com/stacklok/brood-box/pkg/domain/agent"
 	"github.com/stacklok/brood-box/pkg/domain/egress"
+	"github.com/stacklok/brood-box/pkg/domain/settings"
 )
 
 // Common dev infrastructure hosts shared across agents at the standard profile.
@@ -74,6 +75,21 @@ func builtinAgents() map[string]domainagent.Agent {
 				egress.ProfileLocked:   claudeLockedHosts,
 				egress.ProfileStandard: append(claudeLockedHosts, devInfraHosts...),
 			},
+			SettingsManifest: &settings.Manifest{Entries: []settings.Entry{
+				{Category: "settings", HostPath: ".claude/settings.json", GuestPath: ".claude/settings.json", Kind: settings.KindMergeFile, Optional: true,
+					Format: "json", Filter: &settings.FieldFilter{AllowKeys: []string{
+						"permissions", "model", "preferredNotifChannel", "hasCompletedOnboarding",
+						"autoUpdaterStatus",
+					}}},
+				// NOTE: .claude.json mcpServers are NOT injected. The VM cannot reach
+				// host MCP servers — only the toolhive-proxied sandbox-tools endpoint
+				// (injected by the MCP config hook) should be present.
+				{Category: "instructions", HostPath: ".claude/CLAUDE.md", GuestPath: ".claude/CLAUDE.md", Kind: settings.KindFile, Optional: true},
+				{Category: "rules", HostPath: ".claude/rules", GuestPath: ".claude/rules", Kind: settings.KindDirectory, Optional: true},
+				{Category: "agents", HostPath: ".claude/agents", GuestPath: ".claude/agents", Kind: settings.KindDirectory, Optional: true},
+				{Category: "skills", HostPath: ".claude/skills", GuestPath: ".claude/skills", Kind: settings.KindDirectory, Optional: true},
+				{Category: "commands", HostPath: ".claude/commands", GuestPath: ".claude/commands", Kind: settings.KindDirectory, Optional: true},
+			}},
 		},
 		"codex": {
 			Name:                 "codex",
@@ -90,6 +106,20 @@ func builtinAgents() map[string]domainagent.Agent {
 				egress.ProfileLocked:   codexLockedHosts,
 				egress.ProfileStandard: append(codexLockedHosts, devInfraHosts...),
 			},
+			// NOTE: mcp_servers is excluded from AllowKeys — the VM cannot reach host
+			// MCP servers. Only the toolhive-proxied sandbox-tools (injected by the
+			// MCP config hook) should be present in the guest config.
+			SettingsManifest: &settings.Manifest{Entries: []settings.Entry{
+				{Category: "settings", HostPath: ".codex/config.toml", GuestPath: ".codex/config.toml", Kind: settings.KindMergeFile, Optional: true,
+					Format: "toml", Filter: &settings.FieldFilter{AllowKeys: []string{
+						"model", "provider", "approval_mode", "features", "profiles", "tui",
+						"disable_response_storage", "full_auto_error_mode",
+					}}},
+				{Category: "instructions", HostPath: ".codex/AGENTS.md", GuestPath: ".codex/AGENTS.md", Kind: settings.KindFile, Optional: true},
+				{Category: "instructions", HostPath: ".codex/AGENTS.override.md", GuestPath: ".codex/AGENTS.override.md", Kind: settings.KindFile, Optional: true},
+				{Category: "skills", HostPath: ".agents/skills", GuestPath: ".agents/skills", Kind: settings.KindDirectory, Optional: true},
+				{Category: "commands", HostPath: ".codex/prompts", GuestPath: ".codex/prompts", Kind: settings.KindDirectory, Optional: true},
+			}},
 		},
 		"opencode": {
 			Name:                 "opencode",
@@ -106,6 +136,30 @@ func builtinAgents() map[string]domainagent.Agent {
 				egress.ProfileLocked:   opencodeLockedHosts,
 				egress.ProfileStandard: append(opencodeLockedHosts, devInfraHosts...),
 			},
+			SettingsManifest: &settings.Manifest{Entries: []settings.Entry{
+				{Category: "settings", HostPath: ".config/opencode/opencode.json", GuestPath: ".config/opencode/opencode.json", Kind: settings.KindMergeFile, Optional: true,
+					Format: "jsonc", Filter: &settings.FieldFilter{
+						// NOTE: "mcp" is excluded — the VM cannot reach host MCP servers.
+						// Only the toolhive-proxied sandbox-tools should be present.
+						AllowKeys: []string{"providers", "models", "agent", "tools", "plugin", "theme", "command", "instructions", "formatter", "shell", "permission"},
+						DenySubKeys: map[string][]string{"providers": {
+							"*.api_key", "*.apiKey", "*.secret", "*.token",
+							"*.password", "*.credentials", "*.accessToken",
+							"*.access_token", "*.client_secret",
+						}},
+					}},
+				{Category: "settings", HostPath: ".config/opencode/tui.json", GuestPath: ".config/opencode/tui.json", Kind: settings.KindFile, Optional: true},
+				{Category: "instructions", HostPath: ".config/opencode/AGENTS.md", GuestPath: ".config/opencode/AGENTS.md", Kind: settings.KindFile, Optional: true},
+				{Category: "instructions", HostPath: ".claude/CLAUDE.md", GuestPath: ".claude/CLAUDE.md", Kind: settings.KindFile, Optional: true},
+				{Category: "agents", HostPath: ".config/opencode/agents", GuestPath: ".config/opencode/agents", Kind: settings.KindDirectory, Optional: true},
+				{Category: "skills", HostPath: ".config/opencode/skills", GuestPath: ".config/opencode/skills", Kind: settings.KindDirectory, Optional: true},
+				{Category: "skills", HostPath: ".claude/skills", GuestPath: ".claude/skills", Kind: settings.KindDirectory, Optional: true},
+				{Category: "skills", HostPath: ".agents/skills", GuestPath: ".agents/skills", Kind: settings.KindDirectory, Optional: true},
+				{Category: "commands", HostPath: ".config/opencode/commands", GuestPath: ".config/opencode/commands", Kind: settings.KindDirectory, Optional: true},
+				{Category: "tools", HostPath: ".config/opencode/tools", GuestPath: ".config/opencode/tools", Kind: settings.KindDirectory, Optional: true},
+				{Category: "plugins", HostPath: ".config/opencode/plugins", GuestPath: ".config/opencode/plugins", Kind: settings.KindDirectory, Optional: true},
+				{Category: "themes", HostPath: ".config/opencode/themes", GuestPath: ".config/opencode/themes", Kind: settings.KindDirectory, Optional: true},
+			}},
 		},
 	}
 }
