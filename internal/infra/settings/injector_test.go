@@ -145,7 +145,7 @@ func TestFSInjector_File(t *testing.T) {
 
 			inj := NewFSInjector(testLogger())
 			manifest := settings.Manifest{Entries: []settings.Entry{tt.entry}}
-			err := inj.Inject(rootfs, hostHome, manifest)
+			_, err := inj.Inject(rootfs, hostHome, manifest)
 
 			if tt.wantErr != "" {
 				require.Error(t, err)
@@ -313,7 +313,7 @@ func TestFSInjector_Directory(t *testing.T) {
 
 			inj := NewFSInjector(testLogger())
 			manifest := settings.Manifest{Entries: []settings.Entry{tt.entry}}
-			err := inj.Inject(rootfs, hostHome, manifest)
+			_, err := inj.Inject(rootfs, hostHome, manifest)
 
 			if tt.wantErr != "" {
 				require.Error(t, err)
@@ -417,7 +417,7 @@ func TestFSInjector_MergeFileJSON(t *testing.T) {
 
 			inj := NewFSInjector(testLogger())
 			manifest := settings.Manifest{Entries: []settings.Entry{tt.entry}}
-			err := inj.Inject(rootfs, hostHome, manifest)
+			_, err := inj.Inject(rootfs, hostHome, manifest)
 			require.NoError(t, err)
 
 			dstPath := filepath.Join(rootfs, sandboxHome, tt.entry.GuestPath)
@@ -513,7 +513,7 @@ func TestFSInjector_MergeFileTOML(t *testing.T) {
 
 			inj := NewFSInjector(testLogger())
 			manifest := settings.Manifest{Entries: []settings.Entry{tt.entry}}
-			err := inj.Inject(rootfs, hostHome, manifest)
+			_, err := inj.Inject(rootfs, hostHome, manifest)
 			require.NoError(t, err)
 
 			dstPath := filepath.Join(rootfs, sandboxHome, tt.entry.GuestPath)
@@ -625,7 +625,7 @@ func TestFSInjector_MergeFileJSONC(t *testing.T) {
 
 	inj := NewFSInjector(testLogger())
 	manifest := settings.Manifest{Entries: []settings.Entry{entry}}
-	err := inj.Inject(rootfs, hostHome, manifest)
+	_, err := inj.Inject(rootfs, hostHome, manifest)
 	require.NoError(t, err)
 
 	data, err := os.ReadFile(filepath.Join(rootfs, sandboxHome, "settings.json"))
@@ -1163,4 +1163,159 @@ func TestApplyDenySubKeys_EndToEnd(t *testing.T) {
 	assert.Equal(t, "https://gitlab.com", gl["url"])
 	_, hasKey = gl["apiKey"]
 	assert.False(t, hasKey, "gitlab apiKey should be stripped")
+}
+
+func TestFSInjector_Extract_File(t *testing.T) {
+	t.Parallel()
+
+	rootfs := t.TempDir()
+	hostHome := t.TempDir()
+	setupRootfs(t, rootfs)
+
+	// Place a file in the guest rootfs (as if agent created it).
+	guestFile := filepath.Join(rootfs, sandboxHome, ".claude", "settings.json")
+	require.NoError(t, os.MkdirAll(filepath.Dir(guestFile), 0755))
+	require.NoError(t, os.WriteFile(guestFile, []byte(`{"theme":"dark"}`), 0644))
+
+	entry := settings.Entry{
+		Category:  "settings",
+		HostPath:  ".claude/settings.json",
+		GuestPath: ".claude/settings.json",
+		Kind:      settings.KindFile,
+	}
+
+	inj := NewFSInjector(testLogger())
+	manifest := settings.Manifest{Entries: []settings.Entry{entry}}
+	result, err := inj.Extract(rootfs, hostHome, manifest)
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.FileCount)
+
+	// Verify file was written to host.
+	data, err := os.ReadFile(filepath.Join(hostHome, ".claude", "settings.json"))
+	require.NoError(t, err)
+	assert.Equal(t, `{"theme":"dark"}`, string(data))
+}
+
+func TestFSInjector_Extract_SkipsMissingGuest(t *testing.T) {
+	t.Parallel()
+
+	rootfs := t.TempDir()
+	hostHome := t.TempDir()
+	setupRootfs(t, rootfs)
+
+	entry := settings.Entry{
+		Category:  "settings",
+		HostPath:  ".claude/settings.json",
+		GuestPath: ".claude/settings.json",
+		Kind:      settings.KindFile,
+	}
+
+	inj := NewFSInjector(testLogger())
+	manifest := settings.Manifest{Entries: []settings.Entry{entry}}
+	result, err := inj.Extract(rootfs, hostHome, manifest)
+	require.NoError(t, err)
+	assert.Equal(t, 0, result.FileCount)
+}
+
+func TestFSInjector_Extract_MergeFileSkipsWhenHostExists(t *testing.T) {
+	t.Parallel()
+
+	rootfs := t.TempDir()
+	hostHome := t.TempDir()
+	setupRootfs(t, rootfs)
+
+	// Place file in both guest and host.
+	guestFile := filepath.Join(rootfs, sandboxHome, ".claude", "settings.json")
+	require.NoError(t, os.MkdirAll(filepath.Dir(guestFile), 0755))
+	require.NoError(t, os.WriteFile(guestFile, []byte(`{"modified":true}`), 0644))
+
+	hostFile := filepath.Join(hostHome, ".claude", "settings.json")
+	require.NoError(t, os.MkdirAll(filepath.Dir(hostFile), 0755))
+	require.NoError(t, os.WriteFile(hostFile, []byte(`{"original":true}`), 0644))
+
+	entry := settings.Entry{
+		Category:  "settings",
+		HostPath:  ".claude/settings.json",
+		GuestPath: ".claude/settings.json",
+		Kind:      settings.KindMergeFile,
+		Format:    "json",
+	}
+
+	inj := NewFSInjector(testLogger())
+	manifest := settings.Manifest{Entries: []settings.Entry{entry}}
+	result, err := inj.Extract(rootfs, hostHome, manifest)
+	require.NoError(t, err)
+	assert.Equal(t, 0, result.FileCount)
+
+	// Host file should be unchanged.
+	data, err := os.ReadFile(hostFile)
+	require.NoError(t, err)
+	assert.Equal(t, `{"original":true}`, string(data))
+}
+
+func TestFSInjector_Extract_MergeFileExtractsWhenHostMissing(t *testing.T) {
+	t.Parallel()
+
+	rootfs := t.TempDir()
+	hostHome := t.TempDir()
+	setupRootfs(t, rootfs)
+
+	// Place file only in guest.
+	guestFile := filepath.Join(rootfs, sandboxHome, ".claude", "settings.json")
+	require.NoError(t, os.MkdirAll(filepath.Dir(guestFile), 0755))
+	require.NoError(t, os.WriteFile(guestFile, []byte(`{"new":true}`), 0644))
+
+	entry := settings.Entry{
+		Category:  "settings",
+		HostPath:  ".claude/settings.json",
+		GuestPath: ".claude/settings.json",
+		Kind:      settings.KindMergeFile,
+		Format:    "json",
+	}
+
+	inj := NewFSInjector(testLogger())
+	manifest := settings.Manifest{Entries: []settings.Entry{entry}}
+	result, err := inj.Extract(rootfs, hostHome, manifest)
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.FileCount)
+
+	data, err := os.ReadFile(filepath.Join(hostHome, ".claude", "settings.json"))
+	require.NoError(t, err)
+	assert.Equal(t, `{"new":true}`, string(data))
+}
+
+func TestFSInjector_Extract_Directory(t *testing.T) {
+	t.Parallel()
+
+	rootfs := t.TempDir()
+	hostHome := t.TempDir()
+	setupRootfs(t, rootfs)
+
+	// Create a directory with files in the guest.
+	rulesDir := filepath.Join(rootfs, sandboxHome, ".claude", "rules")
+	require.NoError(t, os.MkdirAll(rulesDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(rulesDir, "rule1.md"), []byte("rule 1"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(rulesDir, "rule2.md"), []byte("rule 2"), 0644))
+
+	entry := settings.Entry{
+		Category:  "rules",
+		HostPath:  ".claude/rules",
+		GuestPath: ".claude/rules",
+		Kind:      settings.KindDirectory,
+		Optional:  true,
+	}
+
+	inj := NewFSInjector(testLogger())
+	manifest := settings.Manifest{Entries: []settings.Entry{entry}}
+	result, err := inj.Extract(rootfs, hostHome, manifest)
+	require.NoError(t, err)
+	assert.Equal(t, 2, result.FileCount)
+
+	data1, err := os.ReadFile(filepath.Join(hostHome, ".claude", "rules", "rule1.md"))
+	require.NoError(t, err)
+	assert.Equal(t, "rule 1", string(data1))
+
+	data2, err := os.ReadFile(filepath.Join(hostHome, ".claude", "rules", "rule2.md"))
+	require.NoError(t, err)
+	assert.Equal(t, "rule 2", string(data2))
 }
