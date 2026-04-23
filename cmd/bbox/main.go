@@ -121,7 +121,7 @@ Workspace isolation modes:
     no undo, and git credential sanitization is skipped.
     Enable with --workspace-mode=direct (requires --yes on first use).
 
-Supported agents: claude-code, codex, opencode
+Supported agents: claude-code, codex, hermes, opencode
 
 Example:
   bbox claude-code
